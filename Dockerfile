@@ -15,7 +15,6 @@ ENV PRISMA_SCHEMA_PATH=/app/prisma/schema.postgres.prisma
 COPY package.json package-lock.json* ./
 # Copy Prisma schema before npm install to avoid postinstall hook failure
 COPY prisma ./prisma
-RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -36,6 +35,7 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
+ENV PRISMA_SCHEMA_PATH=/app/prisma/schema.postgres.prisma
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

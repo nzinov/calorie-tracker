@@ -9,7 +9,7 @@
     "db:push": "prisma db push --schema prisma/schema.prisma",
     "migrate:deploy": "prisma migrate deploy --schema prisma/schema.postgres.prisma",
     "lint": "eslint",
-    "postinstall": "node scripts/prisma-generate.js"
+    "postinstall": "echo 'skip prisma generate on postinstall'"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
