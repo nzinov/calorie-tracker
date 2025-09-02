@@ -5,6 +5,9 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
+# Avoid generating Prisma Client during npm ci; we'll control it explicitly
+ENV PRISMA_SKIP_POSTINSTALL_GENERATE=true
+
 # Use Postgres Prisma schema during container build
 ENV PRISMA_SCHEMA_PATH=/app/prisma/schema.postgres.prisma
 
@@ -18,11 +21,12 @@ RUN npm ci
 FROM base AS builder
 WORKDIR /app
 ENV PRISMA_SCHEMA_PATH=/app/prisma/schema.postgres.prisma
+ENV PRISMA_SKIP_POSTINSTALL_GENERATE=true
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma Client (uses PRISMA_SCHEMA_PATH)
-RUN npx prisma generate
+# Generate Prisma Client (uses Postgres schema explicitly)
+RUN npx prisma generate --schema prisma/schema.postgres.prisma
 
 # Build the application
 RUN npm run build
