@@ -15,6 +15,7 @@ ENV PRISMA_SCHEMA_PATH=/app/prisma/schema.postgres.prisma
 COPY package.json package-lock.json* ./
 # Copy Prisma schema before npm install to avoid postinstall hook failure
 COPY prisma ./prisma
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -25,7 +26,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma Client (uses Postgres schema explicitly)
-RUN npx prisma generate --schema prisma/schema.postgres.prisma
+# Ensure no stale client from cache
+RUN rm -rf node_modules/.prisma \
+  && npx prisma generate --schema prisma/schema.postgres.prisma
 
 # Build the application
 RUN npm run build
