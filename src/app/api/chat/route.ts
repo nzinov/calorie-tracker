@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { readFileSync } from "fs"
 import { join } from "path"
 import { homedir } from "os"
+import { addFoodEntry, editFoodEntry, deleteFoodEntry } from "@/lib/food"
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -175,46 +176,25 @@ export async function POST(request: NextRequest) {
         
         try {
           switch (name) {
-            case 'add_food_entry':
-              const addResponse = await fetch(request.nextUrl.origin + "/api/food-entries", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(parsedArgs)
-              })
-              if (addResponse.ok) {
-                const addedEntry = await addResponse.json()
-                toolResults.push("Added " + parsedArgs.name + " to your log")
-                result.foodAdded = addedEntry
-              } else {
-                toolResults.push("Failed to add " + parsedArgs.name)
-              }
+            case 'add_food_entry': {
+              const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
+              const entry = await addFoodEntry(userId, parsedArgs)
+              toolResults.push("Added " + parsedArgs.name + " to your log")
+              result.foodAdded = entry
               break
-              
-            case 'edit_food_entry':
-              const editResponse = await fetch(request.nextUrl.origin + "/api/food-entries/" + parsedArgs.id, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(parsedArgs)
-              })
-              if (editResponse.ok) {
-                toolResults.push("Updated food entry")
-                result.foodUpdated = true
-              } else {
-                toolResults.push("Failed to update food entry")
-              }
+            }
+            case 'edit_food_entry': {
+              await editFoodEntry('', parsedArgs.id, parsedArgs)
+              toolResults.push("Updated food entry")
+              result.foodUpdated = true
               break
-              
-            case 'delete_food_entry':
-              const deleteResponse = await fetch(request.nextUrl.origin + "/api/food-entries/" + parsedArgs.id, {
-                method: 'DELETE'
-              })
-              if (deleteResponse.ok) {
-                toolResults.push("Deleted food entry")
-                result.foodDeleted = true
-              } else {
-                toolResults.push("Failed to delete food entry")
-              }
+            }
+            case 'delete_food_entry': {
+              await deleteFoodEntry('', parsedArgs.id)
+              toolResults.push("Deleted food entry")
+              result.foodDeleted = true
               break
+            }
           }
         } catch (error) {
           toolResults.push("Error with " + name + ": " + error)
