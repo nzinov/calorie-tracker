@@ -37,32 +37,16 @@ export async function GET(request: NextRequest) {
     // Set to start of day
     date.setHours(0, 0, 0, 0)
 
-    let dailyLog = await db.dailyLog.findFirst({
-      where: {
-        userId: userId,
-        date: date,
-      },
+    const dailyLog = await db.dailyLog.upsert({
+      where: { userId_date: { userId, date } },
+      update: {},
+      create: { userId, date },
       include: {
         foodEntries: {
-          orderBy: {
-            timestamp: "asc",
-          },
+          orderBy: { timestamp: "asc" },
         },
       },
     })
-
-    // Create daily log if it doesn't exist
-    if (!dailyLog) {
-      dailyLog = await db.dailyLog.create({
-        data: {
-          userId: userId,
-          date: date,
-        },
-        include: {
-          foodEntries: true,
-        },
-      })
-    }
 
     // Calculate totals
     const totals = dailyLog.foodEntries.reduce(

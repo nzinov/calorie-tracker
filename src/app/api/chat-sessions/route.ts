@@ -36,40 +36,19 @@ export async function GET(request: NextRequest) {
     // Set to start of day
     date.setHours(0, 0, 0, 0)
 
-    // Find or create daily log
-    let dailyLog = await prisma.dailyLog.findFirst({
-      where: {
-        userId,
-        date
-      },
+    // Create or fetch daily log atomically to avoid unique violations
+    const dailyLog = await prisma.dailyLog.upsert({
+      where: { userId_date: { userId, date } },
+      update: {},
+      create: { userId, date },
       include: {
         chatSessions: {
           include: {
-            messages: {
-              orderBy: { timestamp: 'asc' }
-            }
+            messages: { orderBy: { timestamp: 'asc' } }
           }
         }
       }
     })
-
-    if (!dailyLog) {
-      dailyLog = await prisma.dailyLog.create({
-        data: {
-          userId,
-          date
-        },
-        include: {
-          chatSessions: {
-            include: {
-              messages: {
-                orderBy: { timestamp: 'asc' }
-              }
-            }
-          }
-        }
-      })
-    }
 
     return NextResponse.json(dailyLog.chatSessions)
   } catch (error) {
@@ -113,40 +92,18 @@ export async function POST(request: NextRequest) {
     // Set to start of day
     date.setHours(0, 0, 0, 0)
 
-    // Find or create daily log
-    let dailyLog = await prisma.dailyLog.findFirst({
-      where: {
-        userId,
-        date
-      }
+    // Create or fetch daily log atomically to avoid unique violations
+    const dailyLog = await prisma.dailyLog.upsert({
+      where: { userId_date: { userId, date } },
+      update: {},
+      create: { userId, date }
     })
 
-    if (!dailyLog) {
-      dailyLog = await prisma.dailyLog.create({
-        data: {
-          userId,
-          date
-        }
-      })
-    }
-
-    // Check if chat session already exists for this daily log
-    const existingSession = await prisma.chatSession.findUnique({
+    // Create or fetch chat session atomically to avoid unique violations
+    const chatSession = await prisma.chatSession.upsert({
       where: { dailyLogId: dailyLog.id },
-      include: {
-        messages: {
-          orderBy: { timestamp: 'asc' }
-        }
-      }
-    })
-
-    if (existingSession) {
-      return NextResponse.json(existingSession)
-    }
-
-    // Create new chat session
-    const chatSession = await prisma.chatSession.create({
-      data: {
+      update: {},
+      create: {
         dailyLogId: dailyLog.id,
         messages: {
           create: {
@@ -156,9 +113,7 @@ export async function POST(request: NextRequest) {
         }
       },
       include: {
-        messages: {
-          orderBy: { timestamp: 'asc' }
-        }
+        messages: { orderBy: { timestamp: 'asc' } }
       }
     })
 

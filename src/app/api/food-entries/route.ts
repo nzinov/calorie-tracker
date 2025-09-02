@@ -45,22 +45,12 @@ export async function POST(request: NextRequest) {
     const targetDate = date ? new Date(date) : new Date()
     targetDate.setHours(0, 0, 0, 0)
 
-    // Find or create daily log
-    let dailyLog = await db.dailyLog.findFirst({
-      where: {
-        userId: userId,
-        date: targetDate,
-      },
+    // Create or fetch daily log atomically to avoid unique violations
+    const dailyLog = await db.dailyLog.upsert({
+      where: { userId_date: { userId, date: targetDate } },
+      update: {},
+      create: { userId, date: targetDate },
     })
-
-    if (!dailyLog) {
-      dailyLog = await db.dailyLog.create({
-        data: {
-          userId: userId,
-          date: targetDate,
-        },
-      })
-    }
 
     // Create food entry
     const foodEntry = await db.foodEntry.create({
