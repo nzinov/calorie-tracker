@@ -50,15 +50,17 @@ A modern, AI-powered calorie tracking application built with Next.js, TypeScript
    
    Optional `.env` file:
    ```env
+   DATABASE_PROVIDER="sqlite"
    DATABASE_URL="file:./dev.db"
    ```
    
    Note: For local development, authentication is disabled and SQLite database is used by default.
 
-4. **Set up the database**
+4. **Set up the database (SQLite in dev)**
    ```bash
+   # Generate client and sync schema to local SQLite
    npx prisma generate
-   npx prisma migrate dev
+   npx prisma db push
    ```
 
 5. **Run the development server**
@@ -89,6 +91,8 @@ A modern, AI-powered calorie tracking application built with Next.js, TypeScript
 3. **Set environment variables**
    In your Railway project settings, add these variables:
    ```
+   DATABASE_PROVIDER=postgresql
+   DATABASE_URL=<postgres-connection-string-from-railway>
    NEXTAUTH_SECRET=<generate-a-random-secret>
    NEXTAUTH_URL=https://your-app-name.railway.app
    GOOGLE_CLIENT_ID=<your-google-client-id>
@@ -111,11 +115,11 @@ A modern, AI-powered calorie tracking application built with Next.js, TypeScript
 
 ### Database Migrations
 
-Railway will automatically run Prisma migrations during deployment. If you need to run migrations manually:
-
-```bash
-npx prisma migrate deploy
-```
+- Development (SQLite): use `npx prisma db push` to sync the schema to your local SQLite file. This avoids generating SQLite-specific migrations that are not compatible with PostgreSQL.
+- Production (PostgreSQL): migrations are included in the repo and will be applied during deploy. To run them manually:
+  ```bash
+  npx prisma migrate deploy
+  ```
 
 ## Project Structure
 
