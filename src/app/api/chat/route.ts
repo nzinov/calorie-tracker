@@ -5,6 +5,7 @@ import { readFileSync } from "fs"
 import { join } from "path"
 import { homedir } from "os"
 import { addFoodEntry, editFoodEntry, deleteFoodEntry } from "@/lib/food"
+import { db as prisma } from "@/lib/db"
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { message, currentTotals, foodEntries } = await request.json()
+    const { message, currentTotals, foodEntries, chatSessionId } = await request.json()
 
     if (!message) {
       return NextResponse.json(
@@ -126,6 +127,43 @@ export async function POST(request: NextRequest) {
 
     const systemContent = SYSTEM_PROMPT + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext)
 
+    // Build conversation history from stored chat messages
+    const builtMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = []
+    builtMessages.push({ role: "system", content: systemContent })
+
+    if (chatSessionId) {
+      const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
+
+      // Verify the chat session belongs to the user and fetch messages
+      const chatSession = await prisma.chatSession.findFirst({
+        where: {
+          id: chatSessionId,
+          dailyLog: {
+            userId,
+          },
+        },
+        include: {
+          messages: { orderBy: { timestamp: 'asc' } },
+        },
+      })
+
+      if (chatSession) {
+        // Map stored messages into the API format and cap history
+        const history = chatSession.messages.map((m) => ({
+          role: (m.role === 'user' || m.role === 'assistant') ? (m.role as 'user' | 'assistant') : 'user',
+          content: m.content,
+        }))
+
+        // Keep last 10 turns (20 messages) to manage token usage
+        const MAX_MESSAGES = 20
+        const trimmed = history.length > MAX_MESSAGES ? history.slice(history.length - MAX_MESSAGES) : history
+        builtMessages.push(...trimmed)
+      }
+    }
+
+    // Append the current user message as the latest turn
+    builtMessages.push({ role: "user", content: message })
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -136,16 +174,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model: "anthropic/claude-3.5-sonnet",
-        messages: [
-          {
-            role: "system",
-            content: systemContent
-          },
-          {
-            role: "user",
-            content: message
-          }
-        ],
+        messages: builtMessages,
         tools: tools,
         temperature: 0.7,
         max_tokens: 1000,

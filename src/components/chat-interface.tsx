@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react"
 interface ChatMessage {
   role: "user" | "assistant"
   content: string
+  toolResults?: string[]
 }
 
 interface FoodSuggestion {
@@ -148,6 +149,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
           message: userMessage,
           currentTotals: currentTotals,
           foodEntries: foodEntries,
+          chatSessionId: chatSessionId,
         }),
       })
 
@@ -157,9 +159,10 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
 
       const data: ChatResponse = await response.json()
 
-      const assistantMessage = {
-        role: "assistant" as const,
-        content: data.message
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content: data.message,
+        toolResults: data.toolResults
       }
 
       setMessages(prev => [...prev, assistantMessage])
@@ -220,6 +223,18 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
               }`}
             >
               <p className="text-xs md:text-sm whitespace-pre-wrap">{message.content}</p>
+              {message.role === "assistant" && message.toolResults && message.toolResults.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {message.toolResults.map((result, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] md:text-xs font-medium text-emerald-800"
+                    >
+                      {result}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
