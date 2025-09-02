@@ -4,19 +4,20 @@ A modern, AI-powered calorie tracking application built with Next.js, TypeScript
 
 ## Features
 
-- 🔐 **Google OAuth Authentication** - Secure login with Google accounts
+- 🔐 **Google OAuth Authentication** - Secure login with Google accounts (dev mode available)
 - 📊 **Daily Nutrition Tracking** - Track calories, protein, carbs, fat, and fiber
 - 🤖 **AI-Powered Food Logging** - Natural language food entry with OpenRouter API
+- 💬 **Day-Specific Chat History** - Persistent chat sessions tied to daily logs
 - 📈 **Progress Visualization** - Interactive charts and progress bars
 - 📱 **Responsive Design** - Works seamlessly on desktop and mobile
-- 🗄️ **PostgreSQL Database** - Reliable data storage with Prisma ORM
+- 🗄️ **Database Support** - SQLite (dev) / PostgreSQL (prod) with Prisma ORM
 
 ## Tech Stack
 
 - **Frontend**: Next.js 15, React, TypeScript, Tailwind CSS
 - **Backend**: Next.js API Routes, Prisma ORM
-- **Database**: PostgreSQL
-- **Authentication**: NextAuth.js with Google OAuth
+- **Database**: SQLite (dev) / PostgreSQL (prod)
+- **Authentication**: NextAuth.js with Google OAuth (dev mode bypass)
 - **AI**: OpenRouter API (Claude 3.5 Sonnet)
 - **Charts**: Recharts
 - **Deployment**: Railway
@@ -57,7 +58,7 @@ A modern, AI-powered calorie tracking application built with Next.js, TypeScript
 4. **Set up the database**
    ```bash
    npx prisma generate
-   npx prisma db push
+   npx prisma migrate dev
    ```
 
 5. **Run the development server**
@@ -141,6 +142,9 @@ prisma/
 - `PUT /api/food-entries/[id]` - Update food entry
 - `DELETE /api/food-entries/[id]` - Delete food entry
 - `POST /api/chat` - AI chat interface
+- `GET /api/chat-sessions` - Get chat sessions for a date
+- `POST /api/chat-sessions` - Create new chat session
+- `POST /api/chat-sessions/[id]/messages` - Add message to chat session
 
 ## Contributing
 
