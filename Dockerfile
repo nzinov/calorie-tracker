@@ -5,6 +5,9 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
+# Use Postgres Prisma schema during container build
+ENV PRISMA_SCHEMA_PATH=/app/prisma/schema.postgres.prisma
+
 # Install dependencies based on the preferred package manager  
 COPY package.json package-lock.json* ./
 # Copy Prisma schema before npm install to avoid postinstall hook failure
@@ -14,11 +17,12 @@ RUN npm ci
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+ENV PRISMA_SCHEMA_PATH=/app/prisma/schema.postgres.prisma
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma Client for production (PostgreSQL)
-RUN npx prisma generate --schema prisma/schema.postgres.prisma
+# Generate Prisma Client (uses PRISMA_SCHEMA_PATH)
+RUN npx prisma generate
 
 # Build the application
 RUN npm run build
