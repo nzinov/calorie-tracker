@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -70,13 +70,14 @@ model VerificationToken {
 
 model DailyLog {
   id     String   @id @default(cuid())
-  date   DateTime @unique
+  date   DateTime
   userId String
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodEntries  FoodEntry[]
   chatSessions ChatSession[]
 
+  @@unique([userId, date])
   @@map("daily_logs")
 }
 

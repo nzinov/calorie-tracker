@@ -37,7 +37,11 @@ export function useDailyLog(date?: string) {
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = async () => {
-    if (process.env.NODE_ENV !== 'development' && !session) return
+    // In development, always proceed. In production, wait for session
+    if (process.env.NODE_ENV === 'production' && !session) {
+      setLoading(false)
+      return
+    }
 
     try {
       setLoading(true)
