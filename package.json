@@ -6,8 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "prisma generate && next build",
     "start": "next start",
-    "db:push": "prisma db push",
-    "migrate:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push --schema prisma/schema.prisma",
+    "migrate:deploy": "prisma migrate deploy --schema prisma/schema.postgres.prisma",
     "lint": "eslint",
     "postinstall": "prisma generate"
   },

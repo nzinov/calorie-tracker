@@ -17,8 +17,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma Client
-RUN npx prisma generate
+# Generate Prisma Client for production (PostgreSQL)
+RUN npx prisma generate --schema prisma/schema.postgres.prisma
 
 # Build the application
 RUN npm run build
@@ -58,4 +58,4 @@ EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema prisma/schema.postgres.prisma && node server.js"]

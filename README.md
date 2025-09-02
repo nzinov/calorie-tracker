@@ -48,9 +48,8 @@ A modern, AI-powered calorie tracking application built with Next.js, TypeScript
    - Create `~/.openrouter.token` file with your OpenRouter API key, or
    - Set `OPENROUTER_API_KEY` environment variable
    
-   Optional `.env` file:
+   Optional `.env` file (SQLite for dev):
    ```env
-   DATABASE_PROVIDER="sqlite"
    DATABASE_URL="file:./dev.db"
    ```
    
@@ -91,7 +90,6 @@ A modern, AI-powered calorie tracking application built with Next.js, TypeScript
 3. **Set environment variables**
    In your Railway project settings, add these variables:
    ```
-   DATABASE_PROVIDER=postgresql
    DATABASE_URL=<postgres-connection-string-from-railway>
    NEXTAUTH_SECRET=<generate-a-random-secret>
    NEXTAUTH_URL=https://your-app-name.railway.app
