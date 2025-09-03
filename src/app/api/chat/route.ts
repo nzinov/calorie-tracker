@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
-import { readFileSync } from "fs"
-import { join } from "path"
-import { homedir } from "os"
-import { addFoodEntry, editFoodEntry, deleteFoodEntry } from "@/lib/food"
 import { db as prisma } from "@/lib/db"
+import { addFoodEntry, deleteFoodEntry, editFoodEntry } from "@/lib/food"
+import { readFileSync } from "fs"
+import { getServerSession } from "next-auth/next"
+import { NextRequest, NextResponse } from "next/server"
+import { homedir } from "os"
+import { join } from "path"
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -198,8 +198,27 @@ export async function POST(request: NextRequest) {
         })
 
         // Keep last reasonable number of messages to manage token usage
-        const MAX_MESSAGES = 30
-        const trimmed = history.length > MAX_MESSAGES ? history.slice(history.length - MAX_MESSAGES) : history
+        // Always trim before a user message to maintain conversation flow
+        const MAX_MESSAGES = 100
+        let trimmed = history
+        
+        if (history.length > MAX_MESSAGES) {
+          // Find the first user message in the last MAX_MESSAGES messages
+          const startIndex = history.length - MAX_MESSAGES
+          let trimStartIndex = startIndex
+          
+          // Look for the first user message at or after the start index
+          for (let i = startIndex; i < history.length; i++) {
+            if (history[i].role === 'user') {
+              trimStartIndex = i
+              break
+            }
+          }
+          
+          trimmed = history.slice(trimStartIndex)
+          console.log(`Trimmed conversation from ${history.length} to ${trimmed.length} messages, starting with ${trimmed[0]?.role}`)
+        }
+        
         builtMessages.push(...trimmed)
         
         // Always append the current user message to the conversation 
@@ -211,6 +230,20 @@ export async function POST(request: NextRequest) {
     }
 
 
+    const requestPayload = {
+      model: "anthropic/claude-3.5-sonnet",
+      messages: builtMessages,
+      tools: tools,
+      temperature: 0.7,
+      max_tokens: 1000,
+    }
+
+    console.log("=== LLM REQUEST ===")
+    console.log("Timestamp:", new Date().toISOString())
+    console.log("Chat Session ID:", chatSessionId)
+    console.log("User Message:", message)
+    console.log("Request Payload:", JSON.stringify(requestPayload, null, 2))
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -219,13 +252,7 @@ export async function POST(request: NextRequest) {
         "HTTP-Referer": "http://localhost:3001",
         "X-Title": "Calorie Tracker App",
       },
-      body: JSON.stringify({
-        model: "anthropic/claude-3.5-sonnet",
-        messages: builtMessages,
-        tools: tools,
-        temperature: 0.7,
-        max_tokens: 1000,
-      }),
+      body: JSON.stringify(requestPayload),
     })
 
     if (!response.ok) {
@@ -235,7 +262,12 @@ export async function POST(request: NextRequest) {
     const data = await response.json()
     const aiMessage = data.choices[0]?.message
 
+    console.log("=== LLM RESPONSE ===")
+    console.log("Response Status:", response.status)
+    console.log("Response Data:", JSON.stringify(data, null, 2))
+
     if (!aiMessage) {
+      console.log("ERROR: No AI message in response")
       throw new Error("No response from AI")
     }
 
@@ -252,13 +284,18 @@ export async function POST(request: NextRequest) {
     // Handle multiple rounds of tool calling in a loop
     let currentMessage = aiMessage
     let roundCount = 0
-    const maxRounds = 5 // Prevent infinite loops
+    const maxRounds = 15 // Prevent infinite loops
     
     while (roundCount < maxRounds) {
       const toolCalls = currentMessage?.tool_calls
       
+      console.log(`=== TOOL ROUND ${roundCount + 1} ===`)
+      console.log("Current Message:", JSON.stringify(currentMessage, null, 2))
+      console.log("Tool Calls:", toolCalls ? JSON.stringify(toolCalls, null, 2) : "None")
+      
       if (!toolCalls || toolCalls.length === 0) {
         // No more tool calls, save final assistant message and break
+        console.log("No more tool calls, finishing")
         if (currentMessage?.content) {
           await saveMessageToDb(chatSessionId, "assistant", currentMessage.content, null, null)
         }
@@ -282,6 +319,10 @@ export async function POST(request: NextRequest) {
         const { id: toolCallId, function: { name, arguments: args } } = toolCall
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
         
+        console.log(`--- Executing Tool: ${name} ---`)
+        console.log("Tool Call ID:", toolCallId)
+        console.log("Tool Args:", JSON.stringify(parsedArgs, null, 2))
+        
         let toolResult = ""
         
         try {
@@ -290,23 +331,27 @@ export async function POST(request: NextRequest) {
               const entry = await addFoodEntry(userId, parsedArgs)
               toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`
               result.foodAdded = entry
+              console.log("Tool Result:", toolResult)
               break
             }
             case 'edit_food_entry': {
               await editFoodEntry('', parsedArgs.id, parsedArgs)
               toolResult = `Successfully updated food entry.`
               result.foodUpdated = true
+              console.log("Tool Result:", toolResult)
               break
             }
             case 'delete_food_entry': {
               await deleteFoodEntry('', parsedArgs.id)
               toolResult = `Successfully deleted food entry.`
               result.foodDeleted = true
+              console.log("Tool Result:", toolResult)
               break
             }
           }
         } catch (error) {
           toolResult = `Error executing ${name}: ${error}`
+          console.log("Tool Error:", error)
         }
         
         // Save tool message to database
@@ -324,6 +369,17 @@ export async function POST(request: NextRequest) {
       builtMessages.push(...toolMessages)
       
       // Make follow-up request to get next response
+      const followupPayload = {
+        model: "anthropic/claude-3.5-sonnet",
+        messages: builtMessages,
+        tools: tools,
+        temperature: 0.7,
+        max_tokens: 1000,
+      }
+
+      console.log("=== FOLLOW-UP REQUEST ===")
+      console.log("Follow-up Payload:", JSON.stringify(followupPayload, null, 2))
+
       const followupResponse = await fetch(OPENROUTER_API_URL, {
         method: "POST",
         headers: {
@@ -332,13 +388,7 @@ export async function POST(request: NextRequest) {
           "HTTP-Referer": "http://localhost:3001",
           "X-Title": "Calorie Tracker App",
         },
-        body: JSON.stringify({
-          model: "anthropic/claude-3.5-sonnet",
-          messages: builtMessages,
-          tools: tools,
-          temperature: 0.7,
-          max_tokens: 1000,
-        }),
+        body: JSON.stringify(followupPayload),
       })
       
       if (!followupResponse.ok) {
@@ -347,14 +397,21 @@ export async function POST(request: NextRequest) {
       }
       
       const followupData = await followupResponse.json()
+      console.log("=== FOLLOW-UP RESPONSE ===")
+      console.log("Follow-up Data:", JSON.stringify(followupData, null, 2))
+      
       currentMessage = followupData.choices[0]?.message
       roundCount++
     }
     
     // If we hit max rounds, save a warning message
     if (roundCount >= maxRounds) {
+      console.log("WARNING: Hit max rounds limit")
       await saveMessageToDb(chatSessionId, "assistant", "I've completed the available actions. If you need more assistance, please let me know!", null, null)
     }
+
+    console.log("=== FINAL RESULT ===")
+    console.log("Final Result:", JSON.stringify(result, null, 2))
 
     return NextResponse.json(result)
   } catch (error) {
