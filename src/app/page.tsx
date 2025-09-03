@@ -1,12 +1,12 @@
 "use client"
 
-import { NutritionDashboard } from "@/components/nutrition-dashboard"
-import { FoodEntryTable } from "@/components/food-entry-table"
-import { ChatInterface } from "@/components/chat-interface"
-import { AuthGuard } from "@/components/auth-guard"
 import { AuthButton } from "@/components/auth-button"
-import { useState } from "react"
+import { AuthGuard } from "@/components/auth-guard"
+import { ChatInterface } from "@/components/chat-interface"
+import { FoodEntryTable } from "@/components/food-entry-table"
+import { NutritionDashboard } from "@/components/nutrition-dashboard"
 import { useDailyLog } from "@/hooks/use-daily-log"
+import { useState } from "react"
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"today" | "charts">("today")
