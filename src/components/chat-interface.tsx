@@ -173,7 +173,20 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
               setProcessingSteps(prev => [...prev, evt.message])
             }
             if (evt.type === "message" && evt.message) {
-              setMessages(prev => [...prev, evt.message as ChatMessage])
+              const incoming = evt.message as ChatMessage
+              setMessages(prev => {
+                if (incoming.role === 'user') {
+                  for (let i = prev.length - 1; i >= 0; i--) {
+                    const pm = prev[i]
+                    if (pm.role === 'user' && pm.content === incoming.content && !pm.id) {
+                      const copy = prev.slice()
+                      copy[i] = incoming
+                      return copy
+                    }
+                  }
+                }
+                return [...prev, incoming]
+              })
             }
             if (evt.type === "data_changed" && evt.data) {
               if (evt.data.foodAdded && onDataUpdate) {
@@ -340,4 +353,3 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
     </div>
   )
 }
-

@@ -49,13 +49,13 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full">
+    <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full min-h-0 flex flex-col">
       {entries.length === 0 ? (
         <div className="grid place-items-center h-full">
           <p className="text-sm md:text-base text-gray-700 text-center">No food entries yet today</p>
         </div>
       ) : (
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col min-h-0">
           {/* Fixed header */}
           <div className="bg-gray-100 border-b border-gray-300 rounded-t-lg">
             <table className="w-full">

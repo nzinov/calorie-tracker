@@ -97,7 +97,7 @@ export default function Home() {
           <>
             {/* Top section: Daily Progress and Food Log side by side - same height */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
-              <div className="lg:col-span-1 relative">
+              <div className="lg:col-span-1 relative h-96">
                 {loading && (
                   <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -106,7 +106,7 @@ export default function Home() {
                 <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }} />
               </div>
               
-              <div className="lg:col-span-2 relative">
+              <div className="lg:col-span-2 relative h-96">
                 {loading && (
                   <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
