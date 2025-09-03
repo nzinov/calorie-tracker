@@ -14,11 +14,11 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { role, content, llmPrompt, llmResponse, toolResults } = await request.json()
+    const { role, content, toolCalls, toolCallId } = await request.json()
 
-    if (!role || !content) {
+    if (!role) {
       return NextResponse.json(
-        { error: "Role and content are required" },
+        { error: "Role is required" },
         { status: 400 }
       )
     }
@@ -47,11 +47,10 @@ export async function POST(
     const message = await prisma.chatMessage.create({
       data: {
         role,
-        content,
+        content: content || "",
         chatSessionId: id,
-        llmPrompt: llmPrompt || null,
-        llmResponse: llmResponse || null,
-        toolResults: toolResults ? JSON.stringify(toolResults) : null
+        toolCalls: toolCalls || null,
+        toolCallId: toolCallId || null
       }
     })
 

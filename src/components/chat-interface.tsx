@@ -5,21 +5,16 @@ import { DebugPopup } from "./debug-popup"
 
 interface ChatMessage {
   id?: string
-  role: "user" | "assistant"
-  content: string
-  toolResults?: string[]
+  role: "user" | "assistant" | "tool"
+  content: string | null
+  toolCalls?: string | null  // JSON string of tool calls
+  toolCallId?: string | null // Tool call ID for tool messages
 }
 
 interface ChatResponse {
-  message: string
   foodAdded?: any
   foodUpdated?: boolean
   foodDeleted?: boolean
-  toolResults?: string[]
-  debugData?: {
-    prompt: string
-    response: string
-  }
 }
 
 interface ChatInterfaceProps {
@@ -45,6 +40,31 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
   const [debugPopupOpen, setDebugPopupOpen] = useState(false)
   const [debugData, setDebugData] = useState<{prompt: string, response: string} | null>(null)
   const [debugMessageId, setDebugMessageId] = useState<string | null>(null)
+
+  // Helper function to get tool results for an assistant message
+  const getToolResultsForMessage = (assistantMessage: ChatMessage, allMessages: ChatMessage[]): string[] => {
+    if (!assistantMessage.toolCalls) return []
+    
+    try {
+      const toolCalls = JSON.parse(assistantMessage.toolCalls)
+      const toolCallIds = toolCalls.map((call: any) => call.id)
+      
+      // Find all tool messages that correspond to these tool calls
+      const toolResults: string[] = []
+      allMessages.forEach((msg) => {
+        if (msg.role === "tool" && msg.toolCallId && toolCallIds.includes(msg.toolCallId)) {
+          if (msg.content) {
+            toolResults.push(msg.content)
+          }
+        }
+      })
+      
+      return toolResults
+    } catch (error) {
+      console.error('Failed to parse tool calls:', error)
+      return []
+    }
+  }
 
   const fetchDebugData = async (messageId: string) => {
     try {
@@ -77,7 +97,8 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
             id: msg.id,
             role: msg.role,
             content: msg.content,
-            toolResults: msg.toolResults ? JSON.parse(msg.toolResults) : undefined
+            toolCalls: msg.toolCalls,
+            toolCallId: msg.toolCallId
           })))
         }
       }
@@ -145,33 +166,6 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const saveMessageToDatabase = async (role: string, content: string, debugData?: { prompt: string, response: string }, toolResults?: string[]) => {
-    if (!chatSessionId) return null
-
-    try {
-      const response = await fetch(`/api/chat-sessions/${chatSessionId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          role, 
-          content,
-          llmPrompt: debugData?.prompt,
-          llmResponse: debugData?.response,
-          toolResults: toolResults
-        })
-      })
-      if (response.ok) {
-        const message = await response.json()
-        return message.id
-      }
-      return null
-    } catch (error) {
-      console.error('Failed to save message to database:', error)
-      return null
-    }
-  }
 
   const sendMessage = async () => {
     if (!input.trim() || loading || !chatSessionId) return
@@ -181,12 +175,6 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
     setLoading(true)
 
     try {
-      // Save user message to database
-      await saveMessageToDatabase("user", userMessage)
-      
-      // Trigger refresh to show user message immediately
-      setRefreshTrigger(prev => prev + 1)
-
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -206,10 +194,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
 
       const data: ChatResponse = await response.json()
 
-      // Save assistant message to database
-      await saveMessageToDatabase("assistant", data.message, data.debugData, data.toolResults)
-
-      // Trigger refresh to show assistant message
+      // Trigger refresh to show all new messages
       setRefreshTrigger(prev => prev + 1)
 
       // If any tool was used to modify data, refresh the parent component
@@ -218,10 +203,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
       }
     } catch (error) {
       console.error("Chat error:", error)
-      const errorMessage = "Sorry, I'm having trouble connecting to the AI service. Please check your OpenRouter API key configuration."
-      
-      // Save error message to database and refresh
-      await saveMessageToDatabase("assistant", errorMessage, undefined, undefined)
+      // Just refresh to show any messages that were saved
       setRefreshTrigger(prev => prev + 1)
     } finally {
       setLoading(false)
@@ -241,23 +223,41 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
       <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-3 md:mb-4">AI Nutrition Assistant</h2>
       
       <div className="overflow-y-auto space-y-3 md:space-y-4 min-h-0">
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div className="flex items-start gap-2 max-w-2xl">
-              <div
-                className={`px-4 py-2 rounded-lg ${
-                  message.role === "user"
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-200 text-gray-900"
-                }`}
-              >
-                <p className="text-xs md:text-sm whitespace-pre-wrap">{message.content}</p>
-                {message.role === "assistant" && message.toolResults && message.toolResults.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {message.toolResults.map((result, i) => {
+        {messages.map((message, index) => {
+          // Don't display tool messages as chat bubbles - they'll be shown as pills
+          if (message.role === "tool") return null
+
+          return (
+            <div key={index}>
+              {/* Regular chat message */}
+              <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className="flex items-start gap-2 max-w-2xl">
+                  <div
+                    className={`px-4 py-2 rounded-lg ${
+                      message.role === "user"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200 text-gray-900"
+                    }`}
+                  >
+                    {message.content && <p className="text-xs md:text-sm whitespace-pre-wrap">{message.content}</p>}
+                  </div>
+                  {message.role === "assistant" && message.id && (
+                    <button
+                      onClick={() => fetchDebugData(message.id!)}
+                      className="mt-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 rounded border border-gray-300 hover:border-gray-400 transition-colors"
+                      title="View LLM debug data"
+                    >
+                      Debug
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Tool result pills for this assistant message */}
+              {message.role === "assistant" && message.toolCalls && (
+                <div className="flex justify-start mt-2">
+                  <div className="flex flex-wrap gap-2 max-w-2xl">
+                    {getToolResultsForMessage(message, messages).map((toolResult, i) => {
                       const getActionIcon = (text: string) => {
                         if (text.toLowerCase().includes('added')) return '✅'
                         if (text.toLowerCase().includes('updated')) return '✏️'
@@ -276,28 +276,19 @@ export function ChatInterface({ currentTotals, foodEntries, onDataChange, date }
                       return (
                         <span
                           key={i}
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${getActionColor(result)}`}
+                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${getActionColor(toolResult)}`}
                         >
-                          <span className="mr-1.5">{getActionIcon(result)}</span>
-                          {result}
+                          <span className="mr-1.5">{getActionIcon(toolResult)}</span>
+                          {toolResult}
                         </span>
                       )
                     })}
                   </div>
-                )}
-              </div>
-              {message.role === "assistant" && message.id && (
-                <button
-                  onClick={() => fetchDebugData(message.id!)}
-                  className="mt-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 rounded border border-gray-300 hover:border-gray-400 transition-colors"
-                  title="View LLM debug data"
-                >
-                  Debug
-                </button>
+                </div>
               )}
             </div>
-          </div>
-        ))}
+          )
+        })}
         
         <div ref={messagesEndRef} />
         

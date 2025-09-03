@@ -112,17 +112,14 @@ model ChatSession {
 
 model ChatMessage {
   id            String   @id @default(cuid())
-  role          String   // "user" or "assistant"
-  content       String
+  role          String   // "user", "assistant", or "tool"
+  content       String?
   timestamp     DateTime @default(now())
   chatSessionId String
   
-  // Debug fields for LLM interactions
-  llmPrompt     String?  // Full prompt sent to LLM (only for assistant messages)
-  llmResponse   String?  // Raw response from LLM (only for assistant messages)
-  
-  // Tool execution results
-  toolResults   String?  // JSON array of tool execution results (only for assistant messages)
+  // OpenAI-compatible fields
+  toolCalls     String?  // JSON array of tool calls (only for assistant messages)
+  toolCallId    String?  // Tool call ID (only for tool messages)
 
   chatSession ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
 

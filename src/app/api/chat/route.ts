@@ -37,6 +37,20 @@ function getOpenRouterApiKey(): string {
 
 const SYSTEM_PROMPT = "You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:\n\n1. Help users log food by extracting nutritional information from their descriptions\n2. Provide nutritional recommendations based on their daily targets\n3. Answer nutrition-related questions\n4. Help users edit or delete existing food entries\n\nDaily targets:\n- Calories: 2000 kcal\n- Protein: 156g\n- Fat: 78g\n- Carbohydrates: 165g\n- Fiber: 37g\n\nYou have access to the following tools:\n- add_food_entry: Add new food entries to the log\n- edit_food_entry: Edit existing food entries\n- delete_food_entry: Delete food entries\n- get_food_entries: Get current food entries for today\n\nWhen users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools."
 
+async function saveMessageToDb(chatSessionId: string, role: string, content: string | null, toolCalls: string | null, toolCallId: string | null) {
+  if (!chatSessionId) return
+  
+  await prisma.chatMessage.create({
+    data: {
+      role,
+      content: content || "",
+      chatSessionId,
+      toolCalls,
+      toolCallId
+    }
+  })
+}
+
 const tools = [
   {
     type: "function",
@@ -128,7 +142,7 @@ export async function POST(request: NextRequest) {
     const systemContent = SYSTEM_PROMPT + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext)
 
     // Build conversation history from stored chat messages
-    const builtMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = []
+    const builtMessages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: string; tool_call_id?: string; tool_calls?: any }> = []
     builtMessages.push({ role: "system", content: systemContent })
 
     if (chatSessionId) {
@@ -143,46 +157,59 @@ export async function POST(request: NextRequest) {
           },
         },
         include: {
-          messages: { orderBy: { timestamp: 'asc' } },
+          messages: { 
+            orderBy: { timestamp: 'asc' },
+            select: {
+              id: true,
+              role: true,
+              content: true,
+              timestamp: true,
+              toolCalls: true,
+              toolCallId: true
+            }
+          },
         },
       })
 
       if (chatSession) {
-        // Map stored messages into the API format and cap history
-        const history = chatSession.messages.map((m) => ({
-          role: (m.role === 'user' || m.role === 'assistant') ? (m.role as 'user' | 'assistant') : 'user',
-          content: m.content,
-        }))
+        // Convert stored messages back to OpenAI format
+        const history: Array<{ role: "user" | "assistant" | "tool"; content: string; tool_calls?: any; tool_call_id?: string }> = []
+        
+        chatSession.messages.forEach((m) => {
+          if (m.role === 'user') {
+            history.push({ role: 'user', content: m.content || '' })
+          } else if (m.role === 'assistant') {
+            const msg: any = { role: 'assistant', content: m.content || '' }
+            if (m.toolCalls) {
+              try {
+                msg.tool_calls = JSON.parse(m.toolCalls)
+              } catch (e) {
+                console.error('Failed to parse tool calls:', e)
+              }
+            }
+            history.push(msg)
+          } else if (m.role === 'tool') {
+            history.push({ 
+              role: 'tool', 
+              content: m.content || '',
+              tool_call_id: m.toolCallId || ''
+            })
+          }
+        })
 
-        // Keep last 10 turns (20 messages) to manage token usage
-        const MAX_MESSAGES = 20
+        // Keep last reasonable number of messages to manage token usage
+        const MAX_MESSAGES = 30
         const trimmed = history.length > MAX_MESSAGES ? history.slice(history.length - MAX_MESSAGES) : history
         builtMessages.push(...trimmed)
         
-        // Check if the last message in history is already the current user message
-        const lastMessage = trimmed[trimmed.length - 1]
-        const shouldAppendMessage = !lastMessage || 
-          lastMessage.role !== 'user' || 
-          lastMessage.content !== message
-        
-        // Only append the current user message if it's not already the last message
-        if (shouldAppendMessage) {
-          builtMessages.push({ role: "user", content: message })
-        }
+        // Always append the current user message to the conversation 
+        builtMessages.push({ role: "user", content: message })
       } else {
         // If no chat session found, add the user message
         builtMessages.push({ role: "user", content: message })
       }
     }
 
-    // Store the full prompt for debugging
-    const fullPrompt = JSON.stringify({
-      model: "anthropic/claude-3.5-sonnet",
-      messages: builtMessages,
-      tools: tools,
-      temperature: 0.7,
-      max_tokens: 1000,
-    }, null, 2)
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
@@ -207,61 +234,126 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json()
     const aiMessage = data.choices[0]?.message
-    const toolCalls = aiMessage?.tool_calls
 
     if (!aiMessage) {
       throw new Error("No response from AI")
     }
 
-    // Store raw LLM response for debugging
-    const rawResponse = JSON.stringify(data, null, 2)
-
     const result: any = { 
-      message: aiMessage.content || "I'm processing your request...",
-      debugData: {
-        prompt: fullPrompt,
-        response: rawResponse
-      }
+      foodAdded: null,
+      foodUpdated: false,
+      foodDeleted: false
     }
 
-    // Handle tool calls
-    if (toolCalls && toolCalls.length > 0) {
-      const toolResults = []
+    // Save the user message first
+    const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
+    await saveMessageToDb(chatSessionId, "user", message, null, null)
+
+    // Handle multiple rounds of tool calling in a loop
+    let currentMessage = aiMessage
+    let roundCount = 0
+    const maxRounds = 5 // Prevent infinite loops
+    
+    while (roundCount < maxRounds) {
+      const toolCalls = currentMessage?.tool_calls
       
+      if (!toolCalls || toolCalls.length === 0) {
+        // No more tool calls, save final assistant message and break
+        if (currentMessage?.content) {
+          await saveMessageToDb(chatSessionId, "assistant", currentMessage.content, null, null)
+        }
+        break
+      }
+
+      // Save assistant message with tool calls
+      await saveMessageToDb(chatSessionId, "assistant", currentMessage.content || null, JSON.stringify(toolCalls), null)
+
+      // Add the assistant's tool call message to conversation
+      builtMessages.push({
+        role: "assistant",
+        content: currentMessage.content,
+        tool_calls: toolCalls
+      } as any)
+      
+      const toolMessages = []
+      
+      // Execute each tool call
       for (const toolCall of toolCalls) {
-        const { name, arguments: args } = toolCall.function
+        const { id: toolCallId, function: { name, arguments: args } } = toolCall
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
+        
+        let toolResult = ""
         
         try {
           switch (name) {
             case 'add_food_entry': {
-              const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
               const entry = await addFoodEntry(userId, parsedArgs)
-              toolResults.push("Added " + parsedArgs.name + " to your log")
+              toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`
               result.foodAdded = entry
               break
             }
             case 'edit_food_entry': {
               await editFoodEntry('', parsedArgs.id, parsedArgs)
-              toolResults.push("Updated food entry")
+              toolResult = `Successfully updated food entry.`
               result.foodUpdated = true
               break
             }
             case 'delete_food_entry': {
               await deleteFoodEntry('', parsedArgs.id)
-              toolResults.push("Deleted food entry")
+              toolResult = `Successfully deleted food entry.`
               result.foodDeleted = true
               break
             }
           }
         } catch (error) {
-          toolResults.push("Error with " + name + ": " + error)
+          toolResult = `Error executing ${name}: ${error}`
         }
+        
+        // Save tool message to database
+        await saveMessageToDb(chatSessionId, "tool", toolResult, null, toolCallId)
+        
+        // Add tool result message to conversation
+        toolMessages.push({
+          role: "tool" as const,
+          content: toolResult,
+          tool_call_id: toolCallId
+        })
       }
       
-      if (toolResults.length > 0) {
-        result.toolResults = toolResults
+      // Add tool result messages to conversation
+      builtMessages.push(...toolMessages)
+      
+      // Make follow-up request to get next response
+      const followupResponse = await fetch(OPENROUTER_API_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + getOpenRouterApiKey(),
+          "Content-Type": "application/json",
+          "HTTP-Referer": "http://localhost:3001",
+          "X-Title": "Calorie Tracker App",
+        },
+        body: JSON.stringify({
+          model: "anthropic/claude-3.5-sonnet",
+          messages: builtMessages,
+          tools: tools,
+          temperature: 0.7,
+          max_tokens: 1000,
+        }),
+      })
+      
+      if (!followupResponse.ok) {
+        console.error("Follow-up request failed:", followupResponse.statusText)
+        break
       }
+      
+      const followupData = await followupResponse.json()
+      currentMessage = followupData.choices[0]?.message
+      roundCount++
+    }
+    
+    // If we hit max rounds, save a warning message
+    if (roundCount >= maxRounds) {
+      await saveMessageToDb(chatSessionId, "assistant", "I've completed the available actions. If you need more assistance, please let me know!", null, null)
     }
 
     return NextResponse.json(result)

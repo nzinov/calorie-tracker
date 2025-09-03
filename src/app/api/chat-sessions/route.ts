@@ -44,7 +44,17 @@ export async function GET(request: NextRequest) {
       include: {
         chatSessions: {
           include: {
-            messages: { orderBy: { timestamp: 'asc' } }
+            messages: { 
+              orderBy: { timestamp: 'asc' },
+              select: {
+                id: true,
+                role: true,
+                content: true,
+                timestamp: true,
+                toolCalls: true,
+                toolCallId: true
+              }
+            }
           }
         }
       }
@@ -113,7 +123,17 @@ export async function POST(request: NextRequest) {
         }
       },
       include: {
-        messages: { orderBy: { timestamp: 'asc' } }
+        messages: { 
+          orderBy: { timestamp: 'asc' },
+          select: {
+            id: true,
+            role: true,
+            content: true,
+            timestamp: true,
+            toolCalls: true,
+            toolCallId: true
+          }
+        }
       }
     })
 

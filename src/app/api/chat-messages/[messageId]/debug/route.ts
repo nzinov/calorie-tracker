@@ -31,9 +31,9 @@ export async function GET(
         id: true,
         role: true,
         content: true,
-        llmPrompt: true,
-        llmResponse: true,
-        timestamp: true
+        timestamp: true,
+        toolCalls: true,
+        toolCallId: true
       }
     })
 
@@ -55,12 +55,13 @@ export async function GET(
     return NextResponse.json({
       messageId: message.id,
       debugData: {
-        prompt: message.llmPrompt,
-        response: message.llmResponse
+        toolCalls: message.toolCalls,
+        toolCallId: message.toolCallId
       },
       metadata: {
         timestamp: message.timestamp,
-        content: message.content
+        content: message.content,
+        role: message.role
       }
     })
   } catch (error) {
