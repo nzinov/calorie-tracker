@@ -274,7 +274,7 @@ export async function POST(request: NextRequest) {
           throw new Error("No response from AI")
         }
 
-        let result: any = { 
+        const result: any = { 
           foodAdded: null,
           foodUpdated: false,
           foodDeleted: false
