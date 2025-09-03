@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+
 interface FoodEntry {
   id: string
   name: string
@@ -15,10 +17,12 @@ interface FoodEntry {
 interface FoodEntryTableProps {
   entries: FoodEntry[]
   onEdit?: (entry: FoodEntry) => void
-  onDelete?: (id: string) => void
+  onDelete?: (id: string) => Promise<void>
 }
 
 export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProps) {
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
+  
   const formatTime = (date: Date) => {
     return new Intl.DateTimeFormat("en-US", {
       hour: "numeric",
@@ -27,65 +31,96 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
     }).format(date)
   }
 
+  const handleDelete = async (id: string) => {
+    if (!onDelete) return
+    
+    setDeletingIds(prev => new Set(prev).add(id))
+    try {
+      await onDelete(id)
+    } catch (error) {
+      console.error("Failed to delete entry:", error)
+    } finally {
+      setDeletingIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(id)
+        return newSet
+      })
+    }
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 md:p-6 h-full">
+    <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full">
       {entries.length === 0 ? (
         <div className="grid place-items-center h-full">
           <p className="text-sm md:text-base text-gray-700 text-center">No food entries yet today</p>
         </div>
       ) : (
-        <div className="overflow-auto h-full">
-          <table className="w-full">
-            <thead className="bg-gray-100">
-              <tr className="border-b border-gray-300">
-                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Time</th>
-                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Food</th>
-                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Quantity</th>
-                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Cal</th>
-                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Protein</th>
-                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Carbs</th>
-                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Fat</th>
-                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Fiber</th>
-                <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold text-gray-900 text-xs md:text-sm">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => (
-                <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-gray-800 text-xs md:text-sm">
-                    {formatTime(entry.timestamp)}
-                  </td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 font-medium text-gray-900 text-xs md:text-sm">{entry.name}</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-gray-800 text-xs md:text-sm">{entry.quantity}</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-right font-medium text-gray-900 text-xs md:text-sm">{entry.calories.toFixed(0)}</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-right text-gray-800 text-xs md:text-sm">{entry.protein.toFixed(1)}g</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-right text-gray-800 text-xs md:text-sm">{entry.carbs.toFixed(1)}g</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-right text-gray-800 text-xs md:text-sm">{entry.fat.toFixed(1)}g</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-right text-gray-800 text-xs md:text-sm">{entry.fiber.toFixed(1)}g</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 text-center">
-                    <div className="flex justify-center space-x-2">
-                      {onEdit && (
-                        <button
-                          onClick={() => onEdit(entry)}
-                          className="text-blue-700 hover:text-blue-900 text-xs md:text-sm font-medium"
-                        >
-                          Edit
-                        </button>
-                      )}
-                      {onDelete && (
-                        <button
-                          onClick={() => onDelete(entry.id)}
-                          className="text-red-600 hover:text-red-800 text-xs md:text-sm"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </td>
+        <div className="h-full flex flex-col">
+          {/* Fixed header */}
+          <div className="bg-gray-100 border-b border-gray-300 rounded-t-lg">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Time</th>
+                  <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Food</th>
+                  <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Quantity</th>
+                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Cal</th>
+                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Protein</th>
+                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Carbs</th>
+                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fat</th>
+                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fiber</th>
+                  <th className="text-center py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Actions</th>
                 </tr>
-              ))}
+              </thead>
+            </table>
+          </div>
+          
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto">
+            <table className="w-full">
+            <tbody>
+              {entries.map((entry) => {
+                const isDeleting = deletingIds.has(entry.id)
+                return (
+                  <tr key={entry.id} className={`border-b border-gray-200 hover:bg-gray-50 transition-opacity ${isDeleting ? 'opacity-50' : ''}`}>
+                    <td className="py-1.5 px-2 md:px-3 text-gray-800 text-xs">
+                      {formatTime(entry.timestamp)}
+                    </td>
+                    <td className="py-1.5 px-2 md:px-3 font-medium text-gray-900 text-xs">{entry.name}</td>
+                    <td className="py-1.5 px-2 md:px-3 text-gray-800 text-xs">{entry.quantity}</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right font-medium text-gray-900 text-xs">{entry.calories.toFixed(0)}</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.protein.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.carbs.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fat.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fiber.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-center">
+                      <div className="flex justify-center space-x-2">
+                        {onEdit && (
+                          <button
+                            onClick={() => onEdit(entry)}
+                            disabled={isDeleting}
+                            className="text-blue-700 hover:text-blue-900 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button
+                            onClick={() => handleDelete(entry.id)}
+                            disabled={isDeleting}
+                            className="text-red-600 hover:text-red-800 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isDeleting ? 'Deleting...' : 'Delete'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       )}
     </div>

@@ -413,7 +413,10 @@ export async function POST(request: NextRequest) {
     console.log("=== FINAL RESULT ===")
     console.log("Final Result:", JSON.stringify(result, null, 2))
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      ...result,
+      completed: true
+    })
   } catch (error) {
     console.error("Error in chat API:", error)
     console.error("Error details:", error instanceof Error ? error.message : error)

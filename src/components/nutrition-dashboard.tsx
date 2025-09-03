@@ -17,8 +17,8 @@ interface NutritionDashboardProps {
 
 export function NutritionDashboard({ data }: NutritionDashboardProps) {
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 md:p-6 h-full">
-      <div className="grid gap-3 md:gap-4 content-start h-full">
+    <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full">
+      <div className="flex flex-col gap-1.5">
         <ProgressBar
           label="Calories"
           current={data.calories}
