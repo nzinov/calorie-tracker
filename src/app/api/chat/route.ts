@@ -158,11 +158,31 @@ export async function POST(request: NextRequest) {
         const MAX_MESSAGES = 20
         const trimmed = history.length > MAX_MESSAGES ? history.slice(history.length - MAX_MESSAGES) : history
         builtMessages.push(...trimmed)
+        
+        // Check if the last message in history is already the current user message
+        const lastMessage = trimmed[trimmed.length - 1]
+        const shouldAppendMessage = !lastMessage || 
+          lastMessage.role !== 'user' || 
+          lastMessage.content !== message
+        
+        // Only append the current user message if it's not already the last message
+        if (shouldAppendMessage) {
+          builtMessages.push({ role: "user", content: message })
+        }
+      } else {
+        // If no chat session found, add the user message
+        builtMessages.push({ role: "user", content: message })
       }
     }
 
-    // Append the current user message as the latest turn
-    builtMessages.push({ role: "user", content: message })
+    // Store the full prompt for debugging
+    const fullPrompt = JSON.stringify({
+      model: "anthropic/claude-3.5-sonnet",
+      messages: builtMessages,
+      tools: tools,
+      temperature: 0.7,
+      max_tokens: 1000,
+    }, null, 2)
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
@@ -193,7 +213,16 @@ export async function POST(request: NextRequest) {
       throw new Error("No response from AI")
     }
 
-    const result: any = { message: aiMessage.content || "I'm processing your request..." }
+    // Store raw LLM response for debugging
+    const rawResponse = JSON.stringify(data, null, 2)
+
+    const result: any = { 
+      message: aiMessage.content || "I'm processing your request...",
+      debugData: {
+        prompt: fullPrompt,
+        response: rawResponse
+      }
+    }
 
     // Handle tool calls
     if (toolCalls && toolCalls.length > 0) {
@@ -231,7 +260,6 @@ export async function POST(request: NextRequest) {
       }
       
       if (toolResults.length > 0) {
-        result.message = aiMessage.content + (toolResults.length > 0 ? " " + toolResults.join('. ') : '')
         result.toolResults = toolResults
       }
     }

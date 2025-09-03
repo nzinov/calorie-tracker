@@ -112,6 +112,13 @@ model ChatMessage {
   content       String
   timestamp     DateTime @default(now())
   chatSessionId String
+  
+  // Debug fields for LLM interactions
+  llmPrompt     String?  // Full prompt sent to LLM (only for assistant messages)
+  llmResponse   String?  // Raw response from LLM (only for assistant messages)
+  
+  // Tool execution results
+  toolResults   String?  // JSON array of tool execution results (only for assistant messages)
 
   chatSession ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
 

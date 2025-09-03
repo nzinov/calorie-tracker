@@ -14,7 +14,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { role, content } = await request.json()
+    const { role, content, llmPrompt, llmResponse, toolResults } = await request.json()
 
     if (!role || !content) {
       return NextResponse.json(
@@ -48,7 +48,10 @@ export async function POST(
       data: {
         role,
         content,
-        chatSessionId: id
+        chatSessionId: id,
+        llmPrompt: llmPrompt || null,
+        llmResponse: llmResponse || null,
+        toolResults: toolResults ? JSON.stringify(toolResults) : null
       }
     })
 
