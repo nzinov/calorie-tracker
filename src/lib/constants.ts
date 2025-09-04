@@ -1,8 +1,8 @@
 export const DAILY_TARGETS = {
-  calories: 2000,
-  protein: 156,
-  fat: 78,
-  carbs: 165,
+  calories: 1900,
+  protein: 157,
+  fat: 70,
+  carbs: 160,
   fiber: 37,
   water: 8, // glasses
 } as const
