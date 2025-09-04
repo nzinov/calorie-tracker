@@ -55,7 +55,7 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
           <p className="text-sm md:text-base text-gray-700 text-center">No food entries yet today</p>
         </div>
       ) : (
-        <div className="h-full flex flex-col min-h-0">
+        <div className="h-full flex flex-col min-h-0 overflow-x-auto">
           {/* Fixed header */}
           <div className="bg-gray-100 border-b border-gray-300 rounded-t-lg">
             <table className="w-full">

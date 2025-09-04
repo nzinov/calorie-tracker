@@ -269,7 +269,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
                         : "bg-gray-200 text-gray-900"
                     }`}
                   >
-                    {message.content && <p className="text-xs md:text-sm whitespace-pre-wrap">{message.content}</p>}
+                    {message.content && <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{message.content}</p>}
                   </div>
                 </div>
               </div>
