@@ -55,29 +55,21 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
           <p className="text-sm md:text-base text-gray-700 text-center">No food entries yet today</p>
         </div>
       ) : (
-        <div className="h-full flex flex-col min-h-0 overflow-x-auto">
-          {/* Fixed header */}
-          <div className="bg-gray-100 border-b border-gray-300 rounded-t-lg">
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Time</th>
-                  <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Food</th>
-                  <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Quantity</th>
-                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Cal</th>
-                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Protein</th>
-                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Carbs</th>
-                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fat</th>
-                  <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fiber</th>
-                  <th className="text-center py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Actions</th>
-                </tr>
-              </thead>
-            </table>
-          </div>
-          
-          {/* Scrollable body */}
-          <div className="flex-1 overflow-y-auto">
-            <table className="w-full">
+        <div className="h-full min-h-0 overflow-auto">
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0 z-10 bg-gray-100 border-b border-gray-300">
+              <tr>
+                <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Time</th>
+                <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Food</th>
+                <th className="text-left py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Quantity</th>
+                <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Cal</th>
+                <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Protein</th>
+                <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Carbs</th>
+                <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fat</th>
+                <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fiber</th>
+                <th className="text-center py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Actions</th>
+              </tr>
+            </thead>
             <tbody>
               {entries.map((entry) => {
                 const isDeleting = deletingIds.has(entry.id)
@@ -119,8 +111,7 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                 )
               })}
             </tbody>
-            </table>
-          </div>
+          </table>
         </div>
       )}
     </div>

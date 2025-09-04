@@ -258,6 +258,8 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
     <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col">
       <div className="flex-1 overflow-y-auto space-y-2">
         {messages.map((message, index) => {
+          // Hide raw tool messages; show their results only as pills under the assistant message
+          if (message.role === "tool") return null
           return (
             <div key={index}>
               <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>

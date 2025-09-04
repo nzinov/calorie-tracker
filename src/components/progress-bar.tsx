@@ -7,7 +7,7 @@ interface ProgressBarProps {
 }
 
 export function ProgressBar({ label, current, target, unit, color = "bg-blue-500" }: ProgressBarProps) {
-  const percentage = Math.min((current / target) * 100, 100)
+  const percentage = (current / target) * 100
   const isOverTarget = current > target
 
   return (
@@ -27,7 +27,7 @@ export function ProgressBar({ label, current, target, unit, color = "bg-blue-500
         />
       </div>
       <div className="text-xs text-gray-700">
-        {percentage.toFixed(1)}% of daily target
+        {percentage.toFixed(1)}%
       </div>
     </div>
   )

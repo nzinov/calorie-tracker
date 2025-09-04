@@ -51,16 +51,17 @@ export default function Home() {
       <div className="md:h-screen bg-gray-100 grid grid-rows-[auto_1fr]">
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center space-x-4">
+            <div className="py-4 grid grid-cols-2 items-center gap-3">
+              <div className="flex items-center justify-start gap-3">
+                <h1 className="hidden md:block text-2xl font-bold text-gray-900">Calorie Tracker</h1>
                 <input
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-1 border text-gray-500 border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="px-3 py-1 border text-gray-700 border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-auto"
                 />
               </div>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center justify-end">
                 <AuthButton />
               </div>
             </div>
@@ -68,7 +69,7 @@ export default function Home() {
         </header>
 
       <main className="min-h-0">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full min-h-0 grid grid-rows-[auto_1fr] gap-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full min-h-0 grid grid-rows-[auto_1fr] gap-8">
           {/* Top section: Daily Progress and Food Log side by side - same height */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
             <div className="lg:col-span-1 relative h-96">
