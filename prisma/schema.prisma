@@ -52,6 +52,13 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // User-specific nutrition targets (nullable; fall back to defaults when null)
+  targetCalories Float?
+  targetProtein  Float?
+  targetCarbs    Float?
+  targetFat      Float?
+  targetFiber    Float?
+
   accounts  Account[]
   sessions  Session[]
   dailyLogs DailyLog[]

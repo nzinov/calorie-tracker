@@ -1,17 +1,26 @@
 "use client"
 
 import { signIn, signOut, useSession } from "next-auth/react"
+import { useState } from "react"
+import { UserSettingsModal } from "@/components/user-settings-modal"
 
 export function AuthButton() {
   const { data: session, status } = useSession()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   if (process.env.NODE_ENV === 'development') {
     return (
       <div className="flex items-center space-x-2">
         <span className="text-sm text-gray-600">Dev Mode</span>
-        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-400"
+          title="Open settings"
+        >
           <span className="text-white text-sm font-medium">D</span>
-        </div>
+        </button>
+        <UserSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </div>
     )
   }
@@ -29,17 +38,24 @@ export function AuthButton() {
       <div className="flex items-center space-x-3">
         <div className="flex items-center space-x-2">
           {session.user.image ? (
-            <img
-              src={session.user.image}
-              alt={session.user.name || "User"}
-              className="w-8 h-8 rounded-full"
-            />
+            <button type="button" onClick={() => setSettingsOpen(true)} title="Open settings">
+              <img
+                src={session.user.image}
+                alt={session.user.name || "User"}
+                className="w-8 h-8 rounded-full"
+              />
+            </button>
           ) : (
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              title="Open settings"
+              className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
               <span className="text-white text-sm font-medium">
                 {session.user.name?.[0]?.toUpperCase() || session.user.email?.[0]?.toUpperCase() || "U"}
               </span>
-            </div>
+            </button>
           )}
           <span className="hidden sm:block text-sm font-medium text-gray-700">
             {session.user.name || session.user.email}
@@ -51,6 +67,7 @@ export function AuthButton() {
         >
           Sign out
         </button>
+        <UserSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </div>
     )
   }
