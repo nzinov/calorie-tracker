@@ -56,8 +56,9 @@ export async function GET(request: NextRequest) {
         carbs: acc.carbs + entry.carbs,
         fat: acc.fat + entry.fat,
         fiber: acc.fiber + entry.fiber,
+        salt: acc.salt + entry.salt,
       }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
     )
 
     return NextResponse.json({

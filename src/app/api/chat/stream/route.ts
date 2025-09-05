@@ -46,7 +46,7 @@ async function saveMessageToDb(chatSessionId: string, role: string, content: str
   return message
 }
 
-const SYSTEM_PROMPT = "You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:\n\n1. Help users log food by extracting nutritional information from their descriptions\n2. Provide nutritional recommendations based on their daily targets\n3. Answer nutrition-related questions\n4. Help users edit or delete existing food entries\n\nDaily targets:\n- Calories: 2000 kcal\n- Protein: 156g\n- Fat: 78g\n- Carbohydrates: 165g\n- Fiber: 37g\n\nYou have access to the following tools:\n- add_food_entry: Add new food entries to the log\n- edit_food_entry: Edit existing food entries\n- delete_food_entry: Delete food entries\n- get_food_entries: Get current food entries for today\n\nWhen users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools."
+const SYSTEM_PROMPT = "You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:\n\n1. Help users log food by extracting nutritional information from their descriptions\n2. Provide nutritional recommendations based on their daily targets\n3. Answer nutrition-related questions\n4. Help users edit or delete existing food entries\n\nDaily targets:\n- Calories: 2000 kcal\n- Protein: 156g\n- Fat: 78g\n- Carbohydrates: 165g\n- Fiber: 37g\n- Salt: 5g\n\nYou have access to the following tools:\n- add_food_entry: Add new food entries to the log\n- edit_food_entry: Edit existing food entries\n- delete_food_entry: Delete food entries\n- get_food_entries: Get current food entries for today\n\nWhen users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools."
 
 const tools = [
   {
@@ -63,9 +63,10 @@ const tools = [
           protein: { type: "number", description: "Protein in grams" },
           carbs: { type: "number", description: "Carbohydrates in grams" },
           fat: { type: "number", description: "Fat in grams" },
-          fiber: { type: "number", description: "Fiber in grams" }
+          fiber: { type: "number", description: "Fiber in grams" },
+          salt: { type: "number", description: "Salt in grams" }
         },
-        required: ["name", "quantity", "calories", "protein", "carbs", "fat", "fiber"]
+        required: ["name", "quantity", "calories", "protein", "carbs", "fat", "fiber", "salt"]
       }
     }
   },
@@ -84,7 +85,8 @@ const tools = [
           protein: { type: "number", description: "New protein in grams" },
           carbs: { type: "number", description: "New carbohydrates in grams" },
           fat: { type: "number", description: "New fat in grams" },
-          fiber: { type: "number", description: "New fiber in grams" }
+          fiber: { type: "number", description: "New fiber in grams" },
+          salt: { type: "number", description: "New salt in grams" }
         },
         required: ["id"]
       }
@@ -143,7 +145,8 @@ export async function POST(request: NextRequest) {
         if (currentTotals) {
           contextMessage = "Current daily totals: " + currentTotals.calories + " calories, " + 
                           currentTotals.protein + "g protein, " + currentTotals.carbs + "g carbs, " + 
-                          currentTotals.fat + "g fat, " + currentTotals.fiber + "g fiber."
+                          currentTotals.fat + "g fat, " + currentTotals.fiber + "g fiber, " +
+                          currentTotals.salt + "g salt."
         }
         
         let foodEntriesContext = "No food entries logged today yet."

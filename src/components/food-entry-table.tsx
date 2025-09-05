@@ -11,6 +11,7 @@ interface FoodEntry {
   carbs: number
   fat: number
   fiber: number
+  salt: number
   timestamp: Date
 }
 
@@ -67,6 +68,7 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                 <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Carbs</th>
                 <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fat</th>
                 <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Fiber</th>
+                <th className="text-right py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Salt</th>
                 <th className="text-center py-1.5 px-2 md:px-3 font-semibold text-gray-900 text-xs">Actions</th>
               </tr>
             </thead>
@@ -85,6 +87,7 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                     <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.carbs.toFixed(1)}g</td>
                     <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fat.toFixed(1)}g</td>
                     <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fiber.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.salt.toFixed(1)}g</td>
                     <td className="py-1.5 px-2 md:px-3 text-center">
                       <div className="flex justify-center space-x-2">
                         {onEdit && (

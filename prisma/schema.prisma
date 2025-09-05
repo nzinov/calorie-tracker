@@ -58,6 +58,7 @@ model User {
   targetCarbs    Float?
   targetFat      Float?
   targetFiber    Float?
+  targetSalt     Float?
 
   accounts  Account[]
   sessions  Session[]
@@ -97,6 +98,7 @@ model FoodEntry {
   carbs       Float
   fat         Float
   fiber       Float
+  salt        Float
   timestamp   DateTime @default(now())
   dailyLogId  String
 

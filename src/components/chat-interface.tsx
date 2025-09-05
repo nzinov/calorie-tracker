@@ -26,6 +26,7 @@ interface ChatInterfaceProps {
     carbs: number
     fat: number
     fiber: number
+    salt: number
   }
   foodEntries?: any[]
   onDataUpdate?: (update: DataUpdate) => void

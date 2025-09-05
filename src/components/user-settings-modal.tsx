@@ -16,6 +16,7 @@ export function UserSettingsModal({ open, onClose }: Props) {
     carbs: 0,
     fat: 0,
     fiber: 0,
+    salt: 0,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +86,12 @@ export function UserSettingsModal({ open, onClose }: Props) {
               <span className="block text-gray-900 mb-1">Fiber (g)</span>
               <input type="number" value={form.fiber}
                      onChange={e => update('fiber', e.target.value)}
+                     className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" />
+            </label>
+            <label className="text-sm text-gray-900">
+              <span className="block text-gray-900 mb-1">Salt (g)</span>
+              <input type="number" value={form.salt}
+                     onChange={e => update('salt', e.target.value)}
                      className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" />
             </label>
           </div>

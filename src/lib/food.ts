@@ -22,6 +22,7 @@ export async function addFoodEntry(userId: string, args: {
   carbs: number
   fat: number
   fiber: number
+  salt: number
   date?: string | Date
 }) {
   const date = args.date ? new Date(args.date) : startOfToday()
@@ -36,6 +37,7 @@ export async function addFoodEntry(userId: string, args: {
       carbs: Number(args.carbs),
       fat: Number(args.fat),
       fiber: Number(args.fiber),
+      salt: Number(args.salt),
       dailyLogId: dailyLog.id,
     },
   })
@@ -49,6 +51,7 @@ export async function editFoodEntry(userId: string, id: string, args: Partial<{
   carbs: number
   fat: number
   fiber: number
+  salt: number
 }>) {
   // Optionally could verify the entry belongs to user's daily log
   return db.foodEntry.update({
@@ -61,6 +64,7 @@ export async function editFoodEntry(userId: string, id: string, args: Partial<{
       ...(args.carbs !== undefined ? { carbs: Number(args.carbs) } : {}),
       ...(args.fat !== undefined ? { fat: Number(args.fat) } : {}),
       ...(args.fiber !== undefined ? { fiber: Number(args.fiber) } : {}),
+      ...(args.salt !== undefined ? { salt: Number(args.salt) } : {}),
     },
   })
 }
@@ -70,4 +74,3 @@ export async function deleteFoodEntry(userId: string, id: string) {
   await db.foodEntry.delete({ where: { id } })
   return { ok: true }
 }
-

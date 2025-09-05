@@ -10,6 +10,7 @@ interface NutritionData {
   fat: number
   carbs: number
   fiber: number
+  salt: number
 }
 
 interface NutritionDashboardProps {
@@ -60,6 +61,14 @@ export function NutritionDashboard({ data }: NutritionDashboardProps) {
           target={t.fiber}
           unit="g"
           color="bg-green-500"
+        />
+        
+        <ProgressBar
+          label="Salt"
+          current={data.salt}
+          target={t.salt}
+          unit="g"
+          color="bg-blue-500"
         />
       </div>
     </div>

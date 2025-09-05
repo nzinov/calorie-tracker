@@ -18,7 +18,7 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const { name, quantity, calories, protein, carbs, fat, fiber } = body
+    const { name, quantity, calories, protein, carbs, fat, fiber, salt } = body
 
     // Verify the food entry belongs to the user
     const existingEntry = await db.foodEntry.findFirst({
@@ -48,6 +48,7 @@ export async function PUT(
         carbs: carbs !== undefined ? parseFloat(carbs) : existingEntry.carbs,
         fat: fat !== undefined ? parseFloat(fat) : existingEntry.fat,
         fiber: fiber !== undefined ? parseFloat(fiber) : existingEntry.fiber,
+        salt: salt !== undefined ? parseFloat(salt) : existingEntry.salt,
       },
     })
 

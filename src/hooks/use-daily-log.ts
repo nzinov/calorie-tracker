@@ -10,6 +10,7 @@ interface FoodEntry {
   carbs: number
   fat: number
   fiber: number
+  salt: number
   timestamp: Date
 }
 
@@ -19,6 +20,7 @@ interface NutritionTotals {
   carbs: number
   fat: number
   fiber: number
+  salt: number
 }
 
 interface DailyLogData {
@@ -131,7 +133,8 @@ export function useDailyLog(date?: string) {
         protein: remainingEntries.reduce((sum, entry) => sum + entry.protein, 0),
         carbs: remainingEntries.reduce((sum, entry) => sum + entry.carbs, 0),
         fat: remainingEntries.reduce((sum, entry) => sum + entry.fat, 0),
-        fiber: remainingEntries.reduce((sum, entry) => sum + entry.fiber, 0)
+        fiber: remainingEntries.reduce((sum, entry) => sum + entry.fiber, 0),
+        salt: remainingEntries.reduce((sum, entry) => sum + entry.salt, 0)
       }
       
       setData(optimisticData)
@@ -192,6 +195,7 @@ export function useDailyLog(date?: string) {
           carbs: list.reduce((s, e) => s + e.carbs, 0),
           fat: list.reduce((s, e) => s + e.fat, 0),
           fiber: list.reduce((s, e) => s + e.fiber, 0),
+          salt: list.reduce((s, e) => s + e.salt, 0),
         }
       }
 

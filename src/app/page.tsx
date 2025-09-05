@@ -78,7 +78,7 @@ export default function Home() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                 </div>
               )}
-              <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }} />
+              <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }} />
             </div>
             
             <div className="lg:col-span-2 relative h-96">
@@ -98,7 +98,7 @@ export default function Home() {
           {/* Bottom section: Chat takes all remaining vertical space */}
           <div className="h-96 md:min-h-0 md:h-full">
             <ChatInterface 
-              currentTotals={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }}
+              currentTotals={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }}
               foodEntries={data?.dailyLog?.foodEntries || []}
               onDataUpdate={updateData}
               date={selectedDate}

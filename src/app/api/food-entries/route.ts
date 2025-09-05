@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, quantity, calories, protein, carbs, fat, fiber, date } = body
+    const { name, quantity, calories, protein, carbs, fat, fiber, salt, date } = body
 
     // Validate required fields
     if (!name || !quantity || calories === undefined || protein === undefined || 
-        carbs === undefined || fat === undefined || fiber === undefined) {
+        carbs === undefined || fat === undefined || fiber === undefined || salt === undefined) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
         carbs: parseFloat(carbs),
         fat: parseFloat(fat),
         fiber: parseFloat(fiber),
+        salt: parseFloat(salt),
         dailyLogId: dailyLog.id,
       },
     })

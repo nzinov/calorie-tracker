@@ -9,6 +9,7 @@ interface NutritionData {
   fat: number
   carbs: number
   fiber: number
+  salt: number
 }
 
 interface NutritionChartProps {
@@ -102,6 +103,10 @@ export function NutritionChart({ data }: NutritionChartProps) {
           <div className="flex items-center space-x-2 mt-1">
             <div className="w-3 h-3 bg-green-500 rounded"></div>
             <span>Fiber: {data.fiber}g</span>
+          </div>
+          <div className="flex items-center space-x-2 mt-1">
+            <div className="w-3 h-3 bg-blue-500 rounded"></div>
+            <span>Salt: {data.salt}g</span>
           </div>
         </div>
       </div>

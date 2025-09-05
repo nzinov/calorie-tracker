@@ -38,6 +38,7 @@ export async function GET() {
       carbs: user.targetCarbs ?? DAILY_TARGETS.carbs,
       fat: user.targetFat ?? DAILY_TARGETS.fat,
       fiber: user.targetFiber ?? DAILY_TARGETS.fiber,
+      salt: user.targetSalt ?? DAILY_TARGETS.salt,
     }
 
     return NextResponse.json({ targets })
@@ -63,6 +64,7 @@ export async function PUT(request: NextRequest) {
       carbs,
       fat,
       fiber,
+      salt,
     } = body || {}
 
     const updateData: any = {}
@@ -71,6 +73,7 @@ export async function PUT(request: NextRequest) {
     if (typeof carbs === 'number') updateData.targetCarbs = carbs
     if (typeof fat === 'number') updateData.targetFat = fat
     if (typeof fiber === 'number') updateData.targetFiber = fiber
+    if (typeof salt === 'number') updateData.targetSalt = salt
 
     await db.user.update({ where: { id: userId }, data: updateData })
 
@@ -80,4 +83,3 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
-

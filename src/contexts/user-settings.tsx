@@ -9,6 +9,7 @@ export type Targets = {
   carbs: number
   fat: number
   fiber: number
+  salt: number
 }
 
 type Ctx = {
@@ -65,4 +66,3 @@ export function useUserSettings() {
   if (!ctx) throw new Error("useUserSettings must be used within UserSettingsProvider")
   return ctx
 }
-
