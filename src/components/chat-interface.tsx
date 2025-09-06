@@ -560,7 +560,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
             className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50"
             onClick={(e) => {
               if (loading) return
-              if (isAndroid() && navigator.mediaDevices?.getUserMedia) {
+              if (isAndroid()) {
                 e.preventDefault()
                 openCamera()
               }
