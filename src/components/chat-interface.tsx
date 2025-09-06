@@ -172,7 +172,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
       })
       streamRef.current = stream
       if (videoRef.current) {
-        videoRef.current.srcObject = stream
+        try { (videoRef.current as any).srcObject = stream } catch {}
         try { await videoRef.current.play() } catch {}
       }
       setCameraOpen(true)
@@ -216,14 +216,13 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
       })
     }
     await waitForVideoDimensions(video)
-    let vw = video.videoWidth || 0
-    let vh = video.videoHeight || 0
+    const vw = video.videoWidth || 0
+    const vh = video.videoHeight || 0
 
     // Fallback to ImageCapture API if available and dimensions still zero
     if ((!vw || !vh) && streamRef.current) {
       try {
         const track = streamRef.current.getVideoTracks()[0]
-        // @ts-ignore: ImageCapture might not be in TS lib
         const ImageCaptureCtor = (window as any).ImageCapture
         if (track && ImageCaptureCtor) {
           const ic = new ImageCaptureCtor(track)
@@ -512,7 +511,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col">
+    <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col" ref={chatRef}>
       <div className="flex-1 overflow-y-auto space-y-2">
         {messages.map((message, index) => {
           // Hide raw tool messages; show their results only as pills under the assistant message
@@ -594,7 +593,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex space-x-2 mt-3 md:mt-4" ref={chatRef}>
+      <div className="flex space-x-2 mt-3 md:mt-4">
         <div className="flex items-center">
           <label
             className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50"
@@ -610,8 +609,8 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
-              capture
+              accept="image/*;capture=environment"
+              {...({ capture: 'environment' } as any)}
               className="sr-only"
               onChange={async (e) => {
                 const file = e.target.files?.[0]
