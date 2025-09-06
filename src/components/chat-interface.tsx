@@ -44,7 +44,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
   const [imageName, setImageName] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const chatRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [cameraOpen, setCameraOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -101,7 +101,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-    inputRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
+    chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
   }
 
   useEffect(() => {
@@ -554,7 +554,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex space-x-2 mt-3 md:mt-4">
+      <div className="flex space-x-2 mt-3 md:mt-4" ref={chatRef}>
         <div className="flex items-center">
           <label
             className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50"
@@ -592,7 +592,6 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
         </div>
         <input
           type="text"
-          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -601,9 +600,9 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
             setTimeout(() => {
               try {
                 messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-                inputRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
+                chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
               } catch {}
-            }, 300)
+            }, 500)
           }}
           placeholder="Try: I had chicken and rice..."
           className="flex-1 border border-gray-400 rounded-lg px-3 py-2 text-sm md:text-base text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
