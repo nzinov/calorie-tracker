@@ -45,6 +45,10 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   const [imageName, setImageName] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
   // Compress image to keep the request payload small (< ~900KB)
   const compressImageToDataUrl = async (file: File): Promise<string> => {
@@ -122,6 +126,107 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
       vv.removeEventListener('scroll', updateInset)
     }
   }, [])
+
+  // Ensure video element attaches to stream after modal renders
+  useEffect(() => {
+    if (!cameraOpen) return
+    const v = videoRef.current
+    const s = streamRef.current
+    if (v && s) {
+      try { (v as any).srcObject = s } catch {}
+      ;(async () => { try { await v.play() } catch {} })()
+    }
+    return () => {
+      if (v) {
+        try { (v as any).srcObject = null } catch {}
+      }
+    }
+  }, [cameraOpen])
+
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+      streamRef.current = null
+      if (videoRef.current) {
+        try { (videoRef.current as any).srcObject = null } catch {}
+      }
+    }
+  }, [])
+
+  // Prefer camera on Android when available
+  const isAndroid = () => {
+    if (typeof navigator === 'undefined') return false
+    return /Android/i.test(navigator.userAgent)
+  }
+
+  const openCamera = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        fileInputRef.current?.click()
+        return
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        try { await videoRef.current.play() } catch {}
+      }
+      setCameraOpen(true)
+    } catch (err) {
+      console.error('Failed to open camera', err)
+      fileInputRef.current?.click()
+    }
+  }
+
+  const closeCamera = () => {
+    try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+    streamRef.current = null
+    if (videoRef.current) {
+      try { (videoRef.current as any).srcObject = null } catch {}
+    }
+    setCameraOpen(false)
+  }
+
+  const capturePhotoFromStream = async () => {
+    const video = videoRef.current
+    if (!video) return
+    // Wait for metadata so dimensions are available
+    if (video.readyState < 2) {
+      await new Promise<void>((resolve) => {
+        const handler = () => { resolve(); video.removeEventListener('loadedmetadata', handler) }
+        video.addEventListener('loadedmetadata', handler)
+      })
+    }
+    const vw = video.videoWidth || 0
+    const vh = video.videoHeight || 0
+    if (!vw || !vh) return
+    const MAX_SIDE = 1280
+    const TARGET_BYTES = 900 * 1024
+    const MIN_QUALITY = 0.5
+    const scale = Math.min(1, MAX_SIDE / Math.max(vw, vh))
+    const width = Math.round(vw * scale)
+    const height = Math.round(vh * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(video, 0, 0, width, height)
+    let quality = 0.8
+    let dataUrl = canvas.toDataURL('image/jpeg', quality)
+    let byteLength = Math.ceil((dataUrl.length * 3) / 4)
+    while (byteLength > TARGET_BYTES && quality > MIN_QUALITY) {
+      quality -= 0.1
+      dataUrl = canvas.toDataURL('image/jpeg', quality)
+      byteLength = Math.ceil((dataUrl.length * 3) / 4)
+    }
+    setImageDataUrl(dataUrl)
+    setImageName('camera.jpg')
+    closeCamera()
+  }
 
   const getToolResultsForMessage = (assistantMessage: ChatMessage, allMessages: ChatMessage[]): string[] => {
     if (!assistantMessage.toolCalls) return []
@@ -451,14 +556,22 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
 
       <div className="flex space-x-2 mt-3 md:mt-4">
         <div className="flex items-center">
-          <label className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50">
-            📷 
+          <label
+            className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50"
+            onClick={(e) => {
+              if (loading) return
+              if (isAndroid() && navigator.mediaDevices?.getUserMedia) {
+                e.preventDefault()
+                openCamera()
+              }
+            }}
+          >
+            📷
             <input
+              ref={fileInputRef}
               type="file"
-              // Use both capture attribute and the accept hint variant for broader Android support
-              accept="image/*;capture=environment"
-              capture="environment"
-              // Avoid display:none to improve mobile compatibility (especially iOS)
+              accept="image/*"
+              capture
               className="sr-only"
               onChange={async (e) => {
                 const file = e.target.files?.[0]
@@ -517,6 +630,34 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
           >
             Remove photo
           </button>
+        </div>
+      )}
+
+      {cameraOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="bg-black p-2 rounded-lg w-full max-w-sm mx-4">
+            <video
+              ref={videoRef}
+              className="w-full h-auto rounded"
+              autoPlay
+              playsInline
+              muted
+            />
+            <div className="mt-2 flex justify-between">
+              <button
+                className="bg-white text-black px-3 py-2 rounded"
+                onClick={capturePhotoFromStream}
+              >
+                Capture
+              </button>
+              <button
+                className="text-white px-3 py-2"
+                onClick={closeCamera}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
