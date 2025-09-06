@@ -191,6 +191,20 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
     setCameraOpen(false)
   }
 
+  // Wait until video has non-zero dimensions (up to a short timeout)
+  const waitForVideoDimensions = async (video: HTMLVideoElement, timeoutMs = 3000) => {
+    if (video.videoWidth && video.videoHeight) return
+    const start = Date.now()
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (video.videoWidth && video.videoHeight) return resolve()
+        if (Date.now() - start > timeoutMs) return resolve()
+        requestAnimationFrame(tick)
+      }
+      tick()
+    })
+  }
+
   const capturePhotoFromStream = async () => {
     const video = videoRef.current
     if (!video) return
@@ -201,9 +215,35 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
         video.addEventListener('loadedmetadata', handler)
       })
     }
-    const vw = video.videoWidth || 0
-    const vh = video.videoHeight || 0
-    if (!vw || !vh) return
+    await waitForVideoDimensions(video)
+    let vw = video.videoWidth || 0
+    let vh = video.videoHeight || 0
+
+    // Fallback to ImageCapture API if available and dimensions still zero
+    if ((!vw || !vh) && streamRef.current) {
+      try {
+        const track = streamRef.current.getVideoTracks()[0]
+        // @ts-ignore: ImageCapture might not be in TS lib
+        const ImageCaptureCtor = (window as any).ImageCapture
+        if (track && ImageCaptureCtor) {
+          const ic = new ImageCaptureCtor(track)
+          const blob: Blob = await ic.takePhoto()
+          const file = new File([blob], 'camera.jpg', { type: blob.type || 'image/jpeg' })
+          const dataUrl = await compressImageToDataUrl(file)
+          setImageDataUrl(dataUrl)
+          setImageName('camera.jpg')
+          closeCamera()
+          return
+        }
+      } catch (e) {
+        console.warn('ImageCapture fallback failed', e)
+      }
+    }
+
+    if (!vw || !vh) {
+      alert('Camera not ready. Please try capturing again.')
+      return
+    }
     const MAX_SIDE = 1280
     const TARGET_BYTES = 900 * 1024
     const MIN_QUALITY = 0.5
