@@ -41,6 +41,57 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   const [processingSteps, setProcessingSteps] = useState<string[]>([])
   const [hasLoadedInitialMessages, setHasLoadedInitialMessages] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
+  const [imageName, setImageName] = useState<string | null>(null)
+
+  // Compress image to keep the request payload small (< ~900KB)
+  const compressImageToDataUrl = async (file: File): Promise<string> => {
+    const MAX_SIDE = 1280
+    const TARGET_BYTES = 900 * 1024
+    const MIN_QUALITY = 0.5
+
+    const loadImage = (file: File): Promise<HTMLImageElement> => {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file)
+        const img = new Image()
+        img.onload = () => {
+          URL.revokeObjectURL(url)
+          resolve(img)
+        }
+        img.onerror = (e) => {
+          URL.revokeObjectURL(url)
+          reject(e)
+        }
+        img.src = url
+      })
+    }
+
+    const img = await loadImage(file)
+    let width = img.width
+    let height = img.height
+    const scale = Math.min(1, MAX_SIDE / Math.max(width, height))
+    width = Math.round(width * scale)
+    height = Math.round(height * scale)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(img, 0, 0, width, height)
+
+    let quality = 0.8
+    let dataUrl = canvas.toDataURL('image/jpeg', quality)
+    let byteLength = Math.ceil((dataUrl.length * 3) / 4) // rough estimate
+
+    // Try decreasing quality to meet target size
+    while (byteLength > TARGET_BYTES && quality > MIN_QUALITY) {
+      quality -= 0.1
+      dataUrl = canvas.toDataURL('image/jpeg', quality)
+      byteLength = Math.ceil((dataUrl.length * 3) / 4)
+    }
+
+    return dataUrl
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -54,13 +105,19 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
     if (!assistantMessage.toolCalls) return []
     try {
       const toolCalls = JSON.parse(assistantMessage.toolCalls)
-      const toolCallIds = toolCalls.map((c: any) => c.id)
+      const toolCallIds: string[] = toolCalls.map((c: any) => c.id)
+      const wanted = new Set(toolCallIds)
+      const seenIds = new Set<string>()
       const results: string[] = []
-      allMessages.forEach((m) => {
-        if (m.role === "tool" && m.toolCallId && toolCallIds.includes(m.toolCallId) && m.content) {
-          results.push(m.content)
-        }
-      })
+      for (const m of allMessages) {
+        if (m.role !== "tool") continue
+        if (!m.toolCallId) continue
+        if (!wanted.has(m.toolCallId)) continue
+        if (seenIds.has(m.toolCallId)) continue
+        if (!m.content) continue
+        seenIds.add(m.toolCallId)
+        results.push(m.content)
+      }
       return results
     } catch (e) {
       console.error("Failed to parse tool calls", e)
@@ -186,6 +243,17 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
                     }
                   }
                 }
+                if (incoming.role === 'tool' && incoming.toolCallId) {
+                  // Avoid duplicate tool messages for the same tool call id
+                  for (let i = prev.length - 1; i >= 0; i--) {
+                    const pm = prev[i]
+                    if (pm.role === 'tool' && pm.toolCallId === incoming.toolCallId) {
+                      const copy = prev.slice()
+                      copy[i] = incoming
+                      return copy
+                    }
+                  }
+                }
                 return [...prev, incoming]
               })
             }
@@ -202,8 +270,20 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
             }
             if (evt.type === "error") {
               setLoading(false)
-              setProcessingSteps([])
-              console.error("Stream error:", evt.error)
+              const lines: string[] = []
+              const errText = typeof evt.error === 'string' ? evt.error : 'Unexpected error'
+              lines.push(`Error: ${errText}`)
+              const provider = typeof evt.providerError === 'string' ? evt.providerError : null
+              if (provider) lines.push(`Details: ${provider}`)
+              if (!provider && evt.details) {
+                try {
+                  const raw = typeof evt.details === 'string' ? evt.details : JSON.stringify(evt.details)
+                  const short = raw.length > 500 ? raw.slice(0, 500) + '…' : raw
+                  lines.push(`Details: ${short}`)
+                } catch {}
+              }
+              setProcessingSteps(lines)
+              console.error("Stream error:", evt.error, evt.providerError || '', evt.details || '')
             }
           } catch (e) {
             console.error("Failed to parse event", e)
@@ -217,10 +297,15 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
 
   const sendMessage = async () => {
     const text = input.trim()
-    if (!text || loading) return
+    if ((text.length === 0 && !imageDataUrl) || loading) return
     setLoading(true)
-    setProcessingSteps(["Thinking..."])
-    setMessages(prev => [...prev, { role: "user", content: text } as ChatMessage])
+    // Show only the typing dots (no text)
+    setProcessingSteps([])
+    const fallbackText = "Please analyze the attached photo and extract foods and nutrition."
+    const placeholder = imageDataUrl
+      ? `${text.length > 0 ? text : fallbackText}\n[Image attached]`
+      : text
+    setMessages(prev => [...prev, { role: "user", content: placeholder } as ChatMessage])
     setInput("")
     try {
       const res = await fetch(`/api/chat/stream`, {
@@ -232,6 +317,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
           totals: currentTotals,
           foodEntries,
           date,
+          imageDataUrl,
         }),
       })
       if (!res.ok) {
@@ -246,6 +332,9 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
       setProcessingSteps([])
       console.error("Failed to send message", e)
     }
+    // Clear selected image after sending
+    setImageDataUrl(null)
+    setImageName(null)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -263,19 +352,21 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
           if (message.role === "tool") return null
           return (
             <div key={index}>
-              <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className="flex items-start gap-2 max-w-2xl">
-                  <div
-                    className={`px-4 py-2 rounded-lg ${
-                      message.role === "user"
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-900"
-                    }`}
-                  >
-                    {message.content && <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{message.content}</p>}
+              {!(message.role === 'assistant' && (!message.content || message.content.trim().length === 0)) && (
+                <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className="flex items-start gap-2 max-w-2xl">
+                    <div
+                      className={`px-4 py-2 rounded-lg ${
+                        message.role === "user"
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-gray-900"
+                      }`}
+                    >
+                      {message.content && <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{message.content}</p>}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {message.role === "assistant" && message.toolCalls && (
                 <div className="flex justify-start mt-2">
@@ -313,20 +404,21 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
           )
         })}
 
-        {processingSteps.length > 0 && (
+        {(loading || processingSteps.length > 0) && (
           <div className="flex justify-start">
             <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-2 rounded-lg">
-              {processingSteps.map((step, idx) => (
-                <p key={idx} className="text-xs md:text-sm">{step}</p>
-              ))}
-              {loading && (
-                <div className="flex items-center mt-1">
+              {loading ? (
+                <div className="flex items-center">
                   <div className="animate-pulse flex space-x-1">
                     <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
                     <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
                     <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
                   </div>
                 </div>
+              ) : (
+                processingSteps.map((step, idx) => (
+                  <p key={idx} className="text-xs md:text-sm">{step}</p>
+                ))
               )}
             </div>
           </div>
@@ -336,6 +428,31 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
       </div>
 
       <div className="flex space-x-2 mt-3 md:mt-4">
+        <div className="flex items-center">
+          <label className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50">
+            📷 {imageName ? <span className="ml-1 truncate max-w-[140px]">{imageName}</span> : <span className="ml-1">Add Photo</span>}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                setImageName(file.name)
+                try {
+                  const dataUrl = await compressImageToDataUrl(file)
+                  setImageDataUrl(dataUrl)
+                } catch (err) {
+                  console.error('Failed to process image', err)
+                  alert('Failed to process the image. Please try another file.')
+                  e.currentTarget.value = ""
+                }
+              }}
+              disabled={loading}
+            />
+          </label>
+        </div>
         <input
           type="text"
           value={input}
@@ -347,12 +464,27 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
         />
         <button
           onClick={sendMessage}
-          disabled={loading || !input.trim()}
+          disabled={loading || (!input.trim() && !imageDataUrl)}
           className="bg-blue-500 text-white px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Send
         </button>
       </div>
+
+      {imageDataUrl && (
+        <div className="mt-2 flex items-center gap-2">
+          <img src={imageDataUrl} alt="Selected" className="h-16 w-16 object-cover rounded border" />
+          <button
+            className="text-xs text-red-600 hover:underline"
+            onClick={() => {
+              setImageDataUrl(null)
+              setImageName(null)
+            }}
+          >
+            Remove photo
+          </button>
+        </div>
+      )}
     </div>
   )
 }

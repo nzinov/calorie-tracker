@@ -35,6 +35,22 @@ function getOpenRouterApiKey(): string {
   }
 }
 
+function dataUrlToEncoded(imageDataUrl: string): { url: string; mime_type: string } | null {
+  try {
+    if (!imageDataUrl || typeof imageDataUrl !== 'string') return null
+    if (imageDataUrl.startsWith('encoded:')) {
+      return { url: imageDataUrl, mime_type: '' }
+    }
+    const m = imageDataUrl.match(/^data:(.*?);base64,(.*)$/)
+    if (!m) return null
+    const mime = m[1]
+    const b64 = m[2]
+    return { url: `encoded:${b64}`, mime_type: mime }
+  } catch {
+    return null
+  }
+}
+
 const SYSTEM_PROMPT = "You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:\n\n1. Help users log food by extracting nutritional information from their descriptions\n2. Provide nutritional recommendations based on their daily targets\n3. Answer nutrition-related questions\n4. Help users edit or delete existing food entries\n\nDaily targets:\n- Calories: 2000 kcal\n- Protein: 156g\n- Fat: 78g\n- Carbohydrates: 165g\n- Fiber: 37g\n- Salt: 5g\n\nYou have access to the following tools:\n- add_food_entry: Add new food entries to the log\n- edit_food_entry: Edit existing food entries\n- delete_food_entry: Delete food entries\n- get_food_entries: Get current food entries for today\n\nWhen users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools."
 
 async function saveMessageToDb(chatSessionId: string, role: string, content: string | null, toolCalls: string | null, toolCallId: string | null) {
@@ -119,11 +135,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { message, currentTotals, foodEntries, chatSessionId } = await request.json()
+    const { message, currentTotals, foodEntries, chatSessionId, imageDataUrl } = await request.json()
 
-    if (!message) {
+    const hasText = typeof message === 'string' && message.trim().length > 0
+    const hasImage = typeof imageDataUrl === 'string' && imageDataUrl.trim().length > 0
+    if (!hasText && !hasImage) {
       return NextResponse.json(
-        { error: "Message is required" },
+        { error: "Message or image is required" },
         { status: 400 }
       )
     }
@@ -145,8 +163,11 @@ export async function POST(request: NextRequest) {
     const systemContent = SYSTEM_PROMPT + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext)
 
     // Build conversation history from stored chat messages
-    const builtMessages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: string; tool_call_id?: string; tool_calls?: any }> = []
+    const builtMessages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: any; tool_call_id?: string; tool_calls?: any }> = []
     builtMessages.push({ role: "system", content: systemContent })
+
+    // Text to use when the user sends only an image
+    const fallbackText = "Please analyze the attached photo and extract foods and nutrition."
 
     if (chatSessionId) {
       const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
@@ -224,17 +245,33 @@ export async function POST(request: NextRequest) {
         
         builtMessages.push(...trimmed)
         
-        // Always append the current user message to the conversation 
-        builtMessages.push({ role: "user", content: message })
+        // Always append the current user message to the conversation (optionally multimodal)
+        const userText = (typeof message === 'string' && message.trim().length > 0) ? message : fallbackText
+        const userMessageContent: any = imageDataUrl
+          ? [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: imageDataUrl } }
+            ]
+          : userText
+        builtMessages.push({ role: "user", content: userMessageContent } as any)
       } else {
         // If no chat session found, add the user message
-        builtMessages.push({ role: "user", content: message })
+        const userText = (typeof message === 'string' && message.trim().length > 0) ? message : fallbackText
+        const userMessageContent: any = imageDataUrl
+          ? [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: imageDataUrl } }
+            ]
+          : userText
+        builtMessages.push({ role: "user", content: userMessageContent } as any)
       }
     }
 
 
+    const model = "google/gemini-2.0-flash-001"
+
     const requestPayload = {
-      model: "anthropic/claude-3.5-sonnet",
+      model,
       messages: builtMessages,
       tools: tools,
       temperature: 0.7,
@@ -259,7 +296,30 @@ export async function POST(request: NextRequest) {
     })
 
     if (!response.ok) {
-      throw new Error("OpenRouter API error: " + response.statusText)
+      let errBody: any = null
+      try { errBody = await response.json() } catch { try { errBody = await response.text() } catch {}
+      }
+      const status = response.status
+      const statusText = response.statusText
+      const pick = (b: any): string | null => {
+        try {
+          if (!b) return null
+          if (typeof b === 'string') return b
+          const candidates = [b.provider_error, b.error?.details, b.error?.message, b.message, b.detail]
+          for (const c of candidates) if (typeof c === 'string' && c.trim().length > 0) return c
+          if (Array.isArray(b.errors) && b.errors.length) {
+            const first = b.errors[0]
+            if (typeof first === 'string') return first
+            if (typeof first?.message === 'string') return first.message
+            if (typeof first?.detail === 'string') return first.detail
+          }
+        } catch {}
+        return null
+      }
+      const providerError = pick(errBody)
+      const message = providerError || (typeof errBody === 'string' ? errBody : (errBody?.error?.message || errBody?.message || 'Unknown error from OpenRouter'))
+      console.error('OpenRouter request failed:', status, statusText, message, providerError || '')
+      return NextResponse.json({ error: message, providerError, status, statusText, details: errBody }, { status })
     }
 
     const data = await response.json()
@@ -282,7 +342,13 @@ export async function POST(request: NextRequest) {
 
     // Save the user message first
     const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
-    await saveMessageToDb(chatSessionId, "user", message, null, null)
+    await saveMessageToDb(
+      chatSessionId,
+      "user",
+      imageDataUrl ? `${(typeof message === 'string' && message.trim().length > 0) ? message : fallbackText}\n[Image attached]` : ((typeof message === 'string' && message.trim().length > 0) ? message : fallbackText),
+      null,
+      null
+    )
 
     // Handle multiple rounds of tool calling in a loop
     let currentMessage = aiMessage
@@ -373,7 +439,7 @@ export async function POST(request: NextRequest) {
       
       // Make follow-up request to get next response
       const followupPayload = {
-        model: "anthropic/claude-3.5-sonnet",
+        model,
         messages: builtMessages,
         tools: tools,
         temperature: 0.7,
@@ -421,10 +487,10 @@ export async function POST(request: NextRequest) {
       completed: true
     })
   } catch (error) {
-    console.error("Error in chat API:", error)
-    console.error("Error details:", error instanceof Error ? error.message : error)
+    const msg = (error instanceof Error) ? error.message : String(error)
+    console.error("Error in chat API:", msg)
     return NextResponse.json(
-      { error: "Failed to process chat message" },
+      { error: msg || "Failed to process chat message" },
       { status: 500 }
     )
   }

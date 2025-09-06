@@ -31,6 +31,44 @@ function getOpenRouterApiKey(): string {
   }
 }
 
+function formatOpenRouterError(status: number, statusText: string, body: any): string {
+  try {
+    if (body && typeof body === 'object') {
+      const msg = (body as any).error?.message || (body as any).message || (body as any).detail || JSON.stringify(body)
+      return `OpenRouter error ${status} ${statusText}: ${msg}`
+    }
+    if (typeof body === 'string' && body.trim().length > 0) {
+      return `OpenRouter error ${status} ${statusText}: ${body}`
+    }
+  } catch {}
+  return `OpenRouter error ${status} ${statusText}`
+}
+
+function extractProviderError(body: any): string | null {
+  try {
+    if (!body) return null
+    if (typeof body === 'string') return null
+    // common fields
+    const candidates: any[] = [
+      (body as any).provider_error,
+      (body as any).error?.details,
+      (body as any).error?.message,
+      (body as any).message,
+      (body as any).detail,
+    ].filter(Boolean)
+    if (Array.isArray((body as any).errors) && (body as any).errors.length > 0) {
+      const first = (body as any).errors[0]
+      if (typeof first === 'string') candidates.push(first)
+      if (typeof first?.message === 'string') candidates.push(first.message)
+      if (typeof first?.detail === 'string') candidates.push(first.detail)
+    }
+    const text = candidates.find((x) => typeof x === 'string' && x.trim().length > 0)
+    return text || null
+  } catch {
+    return null
+  }
+}
+
 async function saveMessageToDb(chatSessionId: string, role: string, content: string | null, toolCalls: string | null, toolCallId: string | null) {
   if (!chatSessionId) return null
   
@@ -108,6 +146,23 @@ const tools = [
   }
 ]
 
+function dataUrlToEncoded(imageDataUrl: string): { url: string; mime_type: string } | null {
+  try {
+    if (!imageDataUrl || typeof imageDataUrl !== 'string') return null
+    if (imageDataUrl.startsWith('encoded:')) {
+      // Unknown MIME in this case; omit instead of guessing
+      return { url: imageDataUrl, mime_type: '' }
+    }
+    const m = imageDataUrl.match(/^data:(.*?);base64,(.*)$/)
+    if (!m) return null
+    const mime = m[1]
+    const b64 = m[2]
+    return { url: `encoded:${b64}`, mime_type: mime }
+  } catch {
+    return null
+  }
+}
+
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
   
@@ -122,16 +177,18 @@ export async function POST(request: NextRequest) {
         const session = await getServerSession(authOptions)
         
         if (process.env.NODE_ENV !== 'development' && !(session as any)?.user?.id) {
-          sendUpdate({ error: "Unauthorized" })
+          sendUpdate({ type: "error", error: "Unauthorized" })
           controller.close()
           return
         }
 
         const body = await request.json()
-        const { message, currentTotals, foodEntries, chatSessionId } = body
+        const { message, currentTotals, foodEntries, chatSessionId, imageDataUrl } = body
 
-        if (!message) {
-          sendUpdate({ error: "Message is required" })
+        const hasText = typeof message === 'string' && message.trim().length > 0
+        const hasImage = typeof imageDataUrl === 'string' && imageDataUrl.trim().length > 0
+        if (!hasText && !hasImage) {
+          sendUpdate({ type: "error", error: "Message or image is required" })
           controller.close()
           return
         }
@@ -139,7 +196,7 @@ export async function POST(request: NextRequest) {
         sendUpdate({ type: "status", message: "Processing your request..." })
 
         // Build conversation history
-        const builtMessages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: string; tool_calls?: any; tool_call_id?: string }> = []
+        const builtMessages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: any; tool_calls?: any; tool_call_id?: string }> = []
         
         let contextMessage = ""
         if (currentTotals) {
@@ -229,26 +286,44 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        builtMessages.push({ role: "user", content: message })
+        // Build user message, optionally multimodal with an image
+        const fallbackText = "Please analyze the attached photo and extract foods and nutrition."
+        const userText = (typeof message === 'string' && message.trim().length > 0) ? message : fallbackText
+        let userMessageContent: any = userText
+        if (imageDataUrl && typeof imageDataUrl === 'string') {
+          userMessageContent = [
+            { type: "text", text: userText },
+            { type: "image_url", image_url: { url: imageDataUrl } }
+          ]
+        }
+        builtMessages.push({ role: "user", content: userMessageContent } as any)
 
         // Save user message
         const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
-        const savedUserMessage = await saveMessageToDb(chatSessionId, "user", message, null, null)
+        const savedUserMessage = await saveMessageToDb(
+          chatSessionId,
+          "user",
+          imageDataUrl ? `${userText}\n[Image attached]` : userText,
+          null,
+          null
+        )
         
         sendUpdate({ 
           type: "message", 
           message: {
             id: savedUserMessage?.id,
             role: "user",
-            content: message,
+            content: imageDataUrl ? `${userText}\n[Image attached]` : userText,
             toolCalls: null,
             toolCallId: null
           }
         })
 
         // Make initial LLM request
+        const model = "google/gemini-2.0-flash-001"
+
         const requestPayload = {
-          model: "anthropic/claude-3.5-sonnet",
+          model,
           messages: builtMessages,
           tools: tools,
           temperature: 0.7,
@@ -267,7 +342,15 @@ export async function POST(request: NextRequest) {
         })
 
         if (!response.ok) {
-          throw new Error("OpenRouter API error: " + response.statusText)
+          let errBody: any = null
+          try { errBody = await response.json() } catch { try { errBody = await response.text() } catch {}
+          }
+          const msg = formatOpenRouterError(response.status, response.statusText, errBody)
+          const providerError = extractProviderError(errBody)
+          console.error("OpenRouter initial request failed:", msg, providerError || "")
+          sendUpdate({ type: "error", error: msg, providerError, details: errBody })
+          controller.close()
+          return
         }
 
         const data = await response.json()
@@ -398,7 +481,7 @@ export async function POST(request: NextRequest) {
           
           // Make follow-up request
           const followupPayload = {
-            model: "anthropic/claude-3.5-sonnet",
+            model,
             messages: builtMessages,
             tools: tools,
             temperature: 0.7,
@@ -417,8 +500,15 @@ export async function POST(request: NextRequest) {
           })
           
           if (!followupResponse.ok) {
-            console.error("Follow-up request failed:", followupResponse.statusText)
-            break
+            let errBody: any = null
+            try { errBody = await followupResponse.json() } catch { try { errBody = await followupResponse.text() } catch {}
+            }
+            const msg = formatOpenRouterError(followupResponse.status, followupResponse.statusText, errBody)
+            const providerError = extractProviderError(errBody)
+            console.error("OpenRouter follow-up request failed:", msg, providerError || "")
+            sendUpdate({ type: "error", error: msg, providerError, details: errBody })
+            controller.close()
+            return
           }
           
           const followupData = await followupResponse.json()
@@ -429,8 +519,9 @@ export async function POST(request: NextRequest) {
         sendUpdate({ type: "completed" })
 
       } catch (error) {
-        console.error("Error in streaming chat API:", error)
-        sendUpdate({ type: "error", error: "Failed to process chat message" })
+        const msg = (error instanceof Error) ? error.message : String(error)
+        console.error("Error in streaming chat API:", msg)
+        sendUpdate({ type: "error", error: msg })
       }
       
       controller.close()
