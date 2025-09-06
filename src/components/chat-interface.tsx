@@ -451,12 +451,14 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
       <div className="flex space-x-2 mt-3 md:mt-4">
         <div className="flex items-center">
           <label className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50">
-            📷 {imageName ? <span className="ml-1 truncate max-w-[140px]">{imageName}</span> : <span className="ml-1">Add Photo</span>}
+            📷 
             <input
               type="file"
-              accept="image/*"
+              // Use both capture attribute and the accept hint variant for broader Android support
+              accept="image/*;capture=environment"
               capture="environment"
-              className="hidden"
+              // Avoid display:none to improve mobile compatibility (especially iOS)
+              className="sr-only"
               onChange={async (e) => {
                 const file = e.target.files?.[0]
                 if (!file) return
