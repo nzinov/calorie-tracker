@@ -96,7 +96,8 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   }
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+    inputRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
   }
 
   useEffect(() => {
@@ -486,8 +487,8 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
             // Ensure the input remains visible above the keyboard
             setTimeout(() => {
               try {
-                inputRef.current?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
-                messagesEndRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+                messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+                inputRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
               } catch {}
             }, 0)
           }}
