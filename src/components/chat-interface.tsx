@@ -41,6 +41,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   const [processingSteps, setProcessingSteps] = useState<string[]>([])
   const [hasLoadedInitialMessages, setHasLoadedInitialMessages] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
   const [imageName, setImageName] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -100,13 +101,28 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   }
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-    chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
+    const el = messagesContainerRef.current
+    if (el) {
+      try {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      } catch {
+        el.scrollTop = el.scrollHeight
+      }
+    }
   }
 
   useEffect(() => {
-    scrollToBottom()
+    scrollToBottom();
   }, [messages, processingSteps])
+
+  // On initial page load, scroll the chat section into view
+  useEffect(() => {
+    setTimeout(() => {
+      try {
+        chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
+      } catch {}
+    }, 300)
+  }, [])
 
   // Adjust bottom padding when the on-screen keyboard appears on mobile
   useEffect(() => {
@@ -512,7 +528,7 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
 
   return (
     <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col" ref={chatRef}>
-      <div className="flex-1 overflow-y-auto space-y-2">
+      <div className="flex-1 overflow-y-auto space-y-2" ref={messagesContainerRef}>
         {messages.map((message, index) => {
           // Hide raw tool messages; show their results only as pills under the assistant message
           if (message.role === "tool") return null
@@ -635,10 +651,9 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => {
-            // Ensure the input remains visible above the keyboard
+            // On focus, bring the chat container into view
             setTimeout(() => {
               try {
-                messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
                 chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
               } catch {}
             }, 500)
