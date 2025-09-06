@@ -43,6 +43,8 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
   const [imageName, setImageName] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Compress image to keep the request payload small (< ~900KB)
   const compressImageToDataUrl = async (file: File): Promise<string> => {
@@ -100,6 +102,25 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
   useEffect(() => {
     scrollToBottom()
   }, [messages, processingSteps])
+
+  // Adjust bottom padding when the on-screen keyboard appears on mobile
+  useEffect(() => {
+    if (typeof window === 'undefined' || !(window as any).visualViewport) return
+    const vv: VisualViewport = (window as any).visualViewport
+    const updateInset = () => {
+      const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+      if (rootRef.current) {
+        rootRef.current.style.setProperty('--kb-inset', `${Math.round(inset)}px`)
+      }
+    }
+    vv.addEventListener('resize', updateInset)
+    vv.addEventListener('scroll', updateInset)
+    updateInset()
+    return () => {
+      vv.removeEventListener('resize', updateInset)
+      vv.removeEventListener('scroll', updateInset)
+    }
+  }, [])
 
   const getToolResultsForMessage = (assistantMessage: ChatMessage, allMessages: ChatMessage[]): string[] => {
     if (!assistantMessage.toolCalls) return []
@@ -455,9 +476,19 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
         </div>
         <input
           type="text"
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={() => {
+            // Ensure the input remains visible above the keyboard
+            setTimeout(() => {
+              try {
+                inputRef.current?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' })
+                messagesEndRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+              } catch {}
+            }, 0)
+          }}
           placeholder="Try: I had chicken and rice..."
           className="flex-1 border border-gray-400 rounded-lg px-3 py-2 text-sm md:text-base text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
           disabled={loading}
