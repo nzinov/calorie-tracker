@@ -20,20 +20,11 @@ type DataUpdate = {
 }
 
 interface ChatInterfaceProps {
-  currentTotals?: {
-    calories: number
-    protein: number
-    carbs: number
-    fat: number
-    fiber: number
-    salt: number
-  }
-  foodEntries?: any[]
   onDataUpdate?: (update: DataUpdate) => void
-  date?: string
+  date: string
 }
 
-export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }: ChatInterfaceProps) {
+export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -283,29 +274,6 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
     closeCamera()
   }
 
-  const getToolResultsForMessage = (assistantMessage: ChatMessage, allMessages: ChatMessage[]): string[] => {
-    if (!assistantMessage.toolCalls) return []
-    try {
-      const toolCalls = JSON.parse(assistantMessage.toolCalls)
-      const toolCallIds: string[] = toolCalls.map((c: any) => c.id)
-      const wanted = new Set(toolCallIds)
-      const seenIds = new Set<string>()
-      const results: string[] = []
-      for (const m of allMessages) {
-        if (m.role !== "tool") continue
-        if (!m.toolCallId) continue
-        if (!wanted.has(m.toolCallId)) continue
-        if (seenIds.has(m.toolCallId)) continue
-        if (!m.content) continue
-        seenIds.add(m.toolCallId)
-        results.push(m.content)
-      }
-      return results
-    } catch (e) {
-      console.error("Failed to parse tool calls", e)
-      return []
-    }
-  }
 
   const loadMessages = async () => {
     if (!chatSessionId) return
@@ -496,8 +464,6 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
         body: JSON.stringify({
           message: text,
           chatSessionId,
-          totals: currentTotals,
-          foodEntries,
           date,
           imageDataUrl,
         }),
@@ -530,8 +496,41 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
     <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col" ref={chatRef}>
       <div className="flex-1 overflow-y-auto space-y-2" ref={messagesContainerRef}>
         {messages.map((message, index) => {
-          // Hide raw tool messages; show their results only as pills under the assistant message
-          if (message.role === "tool") return null
+          if (message.role === "tool") {
+            // Display tool message as a pill
+            if (!message.content) return null
+            
+            const getActionIcon = (text: string) => {
+              const t = text.toLowerCase()
+              if (t.includes("added")) return "✅"
+              if (t.includes("updated")) return "✏️"
+              if (t.includes("deleted")) return "🗑️"
+              if (t.includes("error")) return "❌"
+              return "📝"
+            }
+            const getActionColor = (text: string) => {
+              const t = text.toLowerCase()
+              if (t.includes("error")) return "border-red-300 bg-red-100 text-red-800"
+              if (t.includes("deleted")) return "border-orange-300 bg-orange-100 text-orange-800"
+              if (t.includes("updated")) return "border-blue-300 bg-blue-100 text-blue-800"
+              return "border-emerald-300 bg-emerald-100 text-emerald-800"
+            }
+            
+            return (
+              <div key={index} className="flex justify-start mt-2">
+                <div className="flex flex-wrap gap-2 max-w-2xl">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${getActionColor(message.content)}`}
+                  >
+                    <span className="mr-1.5">{getActionIcon(message.content)}</span>
+                    {message.content}
+                  </span>
+                </div>
+              </div>
+            )
+          }
+          
+          // Regular user/assistant message
           return (
             <div key={index}>
               {!(message.role === 'assistant' && (!message.content || message.content.trim().length === 0)) && (
@@ -546,39 +545,6 @@ export function ChatInterface({ currentTotals, foodEntries, onDataUpdate, date }
                     >
                       {message.content && <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{message.content}</p>}
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {message.role === "assistant" && message.toolCalls && (
-                <div className="flex justify-start mt-2">
-                  <div className="flex flex-wrap gap-2 max-w-2xl">
-                    {getToolResultsForMessage(message, messages).map((toolResult, i) => {
-                      const getActionIcon = (text: string) => {
-                        const t = text.toLowerCase()
-                        if (t.includes("added")) return "✅"
-                        if (t.includes("updated")) return "✏️"
-                        if (t.includes("deleted")) return "🗑️"
-                        if (t.includes("error")) return "❌"
-                        return "📝"
-                      }
-                      const getActionColor = (text: string) => {
-                        const t = text.toLowerCase()
-                        if (t.includes("error")) return "border-red-300 bg-red-100 text-red-800"
-                        if (t.includes("deleted")) return "border-orange-300 bg-orange-100 text-orange-800"
-                        if (t.includes("updated")) return "border-blue-300 bg-blue-100 text-blue-800"
-                        return "border-emerald-300 bg-emerald-100 text-emerald-800"
-                      }
-                      return (
-                        <span
-                          key={i}
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${getActionColor(toolResult)}`}
-                        >
-                          <span className="mr-1.5">{getActionIcon(toolResult)}</span>
-                          {toolResult}
-                        </span>
-                      )
-                    })}
                   </div>
                 </div>
               )}

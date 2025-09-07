@@ -13,7 +13,7 @@ export default function Home() {
     const today = new Date()
     return today.toISOString().split('T')[0]
   })
-  const { data, loading, error, addFoodEntry, deleteFoodEntry, refetch, updateData } = useDailyLog(selectedDate)
+  const { data, loading, error, addFoodEntry, deleteFoodEntry, refetch } = useDailyLog(selectedDate)
 
   const handleDeleteEntry = async (id: string) => {
     try {
@@ -98,9 +98,7 @@ export default function Home() {
           {/* Bottom section: Chat takes all remaining vertical space */}
           <div className="h-96 md:min-h-0 md:h-full">
             <ChatInterface 
-              currentTotals={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }}
-              foodEntries={data?.dailyLog?.foodEntries || []}
-              onDataUpdate={updateData}
+              onDataUpdate={refetch}
               date={selectedDate}
             />
           </div>

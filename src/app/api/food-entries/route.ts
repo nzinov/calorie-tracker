@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
-import { db } from "@/lib/db"
+import { addFoodEntry } from "@/lib/food"
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,36 +35,24 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!name || !quantity || calories === undefined || protein === undefined || 
-        carbs === undefined || fat === undefined || fiber === undefined || salt === undefined) {
+        carbs === undefined || fat === undefined || fiber === undefined || salt === undefined || !date) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       )
     }
 
-    const targetDate = date ? new Date(date) : new Date()
-    targetDate.setHours(0, 0, 0, 0)
-
-    // Create or fetch daily log atomically to avoid unique violations
-    const dailyLog = await db.dailyLog.upsert({
-      where: { userId_date: { userId, date: targetDate } },
-      update: {},
-      create: { userId, date: targetDate },
-    })
-
-    // Create food entry
-    const foodEntry = await db.foodEntry.create({
-      data: {
-        name,
-        quantity,
-        calories: parseFloat(calories),
-        protein: parseFloat(protein),
-        carbs: parseFloat(carbs),
-        fat: parseFloat(fat),
-        fiber: parseFloat(fiber),
-        salt: parseFloat(salt),
-        dailyLogId: dailyLog.id,
-      },
+    // Use the library function
+    const foodEntry = await addFoodEntry(userId, {
+      name,
+      quantity,
+      calories: parseFloat(calories),
+      protein: parseFloat(protein),
+      carbs: parseFloat(carbs),
+      fat: parseFloat(fat),
+      fiber: parseFloat(fiber),
+      salt: parseFloat(salt),
+      date,
     })
 
     return NextResponse.json(foodEntry, { status: 201 })

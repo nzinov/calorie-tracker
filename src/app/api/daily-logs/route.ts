@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { getServerSession } from "next-auth/next"
+import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,9 +32,15 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const dateParam = searchParams.get("date")
-    const date = dateParam ? new Date(dateParam) : new Date()
     
-    // Set to start of day
+    if (!dateParam) {
+      return NextResponse.json({ error: "Date parameter is required" }, { status: 400 })
+    }
+    
+    const inputDate = new Date(dateParam)
+    
+    // Create a new Date object to avoid mutating input
+    const date = new Date(inputDate)
     date.setHours(0, 0, 0, 0)
 
     const dailyLog = await db.dailyLog.upsert({
@@ -60,6 +66,7 @@ export async function GET(request: NextRequest) {
       }),
       { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
     )
+    console.log('dailyLog', date, userId, totals)
 
     return NextResponse.json({
       dailyLog,

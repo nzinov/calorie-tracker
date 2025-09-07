@@ -1,9 +1,9 @@
-import { NextRequest } from "next/server"
-import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { db as prisma } from "@/lib/db"
-import { addFoodEntry, deleteFoodEntry, editFoodEntry } from "@/lib/food"
+import { addFoodEntry, deleteFoodEntry, editFoodEntry, getCurrentNutritionalData, lookupNutritionalInfo } from "@/lib/food"
 import { readFileSync } from "fs"
+import { getServerSession } from "next-auth/next"
+import { NextRequest } from "next/server"
 import { homedir } from "os"
 import { join } from "path"
 
@@ -84,7 +84,7 @@ async function saveMessageToDb(chatSessionId: string, role: string, content: str
   return message
 }
 
-const SYSTEM_PROMPT = "You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:\n\n1. Help users log food by extracting nutritional information from their descriptions\n2. Provide nutritional recommendations based on their daily targets\n3. Answer nutrition-related questions\n4. Help users edit or delete existing food entries\n\nDaily targets:\n- Calories: 2000 kcal\n- Protein: 156g\n- Fat: 78g\n- Carbohydrates: 165g\n- Fiber: 37g\n- Salt: 5g\n\nYou have access to the following tools:\n- add_food_entry: Add new food entries to the log\n- edit_food_entry: Edit existing food entries\n- delete_food_entry: Delete food entries\n- get_food_entries: Get current food entries for today\n\nWhen users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools."
+const SYSTEM_PROMPT = "You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:\n\n1. Help users log food by extracting nutritional information from their descriptions\n2. Provide nutritional recommendations based on their daily targets\n3. Answer nutrition-related questions\n4. Help users edit or delete existing food entries\n\nDaily targets:\n- Calories: 2000 kcal\n- Protein: 156g\n- Fat: 78g\n- Carbohydrates: 165g\n- Fiber: 37g\n- Salt: 5g\n\nIMPORTANT: Always try to estimate calories and nutritional values when users describe food, even if they don't provide exact measurements. Use your knowledge of typical serving sizes and nutritional content. For example:\n- \"I had pizza\" → estimate for 2-3 slices of typical pizza\n- \"ate some cookies\" → estimate for 2-3 average cookies\n- \"had a sandwich\" → estimate based on typical sandwich ingredients\n- When given photos, analyze all visible food items and estimate portions\n\nBe reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging.\n\nHowever, if estimation is not possible due to unfamiliar foods, specific branded products, complex restaurant dishes, or regional specialties you're not confident about, use the lookup_nutritional_info tool to get accurate data from web sources before logging the entry.\n\nMETRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible. Convert imperial measurements to metric equivalents:\n- \"1 cup\" → \"240ml\" or \"240g\" (depending on food type)\n- \"1 slice\" → \"80g\" (for bread/pizza)\n- \"1 tbsp\" → \"15ml\" or \"15g\"\n- \"1 oz\" → \"28g\"\nUse descriptive quantities like \"1 medium apple (150g)\" or \"1 slice pizza (120g)\" to be both clear and metric.\n\nYou have access to the following tools:\n- add_food_entry: Add new food entries to the log\n- edit_food_entry: Edit existing food entries\n- delete_food_entry: Delete food entries\n- lookup_nutritional_info: Look up nutritional information for unfamiliar or complex foods\n\nWhen users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools."
 
 const tools = [
   {
@@ -96,7 +96,7 @@ const tools = [
         type: "object",
         properties: {
           name: { type: "string", description: "Name of the food" },
-          quantity: { type: "string", description: "Amount consumed (e.g., 1 cup, 150g)" },
+          quantity: { type: "string", description: "Amount consumed in metric units when possible (e.g., 150g, 240ml, 1 medium apple 150g)" },
           calories: { type: "number", description: "Calories per serving" },
           protein: { type: "number", description: "Protein in grams" },
           carbs: { type: "number", description: "Carbohydrates in grams" },
@@ -118,7 +118,7 @@ const tools = [
         properties: {
           id: { type: "string", description: "ID of the food entry to edit" },
           name: { type: "string", description: "New name of the food" },
-          quantity: { type: "string", description: "New amount" },
+          quantity: { type: "string", description: "New amount in metric units when possible" },
           calories: { type: "number", description: "New calories" },
           protein: { type: "number", description: "New protein in grams" },
           carbs: { type: "number", description: "New carbohydrates in grams" },
@@ -143,21 +143,34 @@ const tools = [
         required: ["id"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "lookup_nutritional_info",
+      description: "Look up nutritional information for unfamiliar foods, branded products, or complex dishes using web search",
+      parameters: {
+        type: "object",
+        properties: {
+          foodDescription: { type: "string", description: "Description of the food item to look up (e.g., 'McDonald's Big Mac', 'Thai green curry', 'Ben & Jerry's Chunky Monkey ice cream')" }
+        },
+        required: ["foodDescription"]
+      }
+    }
   }
 ]
 
-function dataUrlToEncoded(imageDataUrl: string): { url: string; mime_type: string } | null {
+function dataUrlToInline(imageDataUrl: string): { data: string; mime_type: string } | null {
   try {
     if (!imageDataUrl || typeof imageDataUrl !== 'string') return null
     if (imageDataUrl.startsWith('encoded:')) {
-      // Unknown MIME in this case; omit instead of guessing
-      return { url: imageDataUrl, mime_type: '' }
+      return { data: imageDataUrl.slice('encoded:'.length), mime_type: 'image/jpeg' }
     }
     const m = imageDataUrl.match(/^data:(.*?);base64,(.*)$/)
     if (!m) return null
-    const mime = m[1]
-    const b64 = m[2]
-    return { url: `encoded:${b64}`, mime_type: mime }
+    const mime_type = m[1]
+    const data = m[2]
+    return { data, mime_type }
   } catch {
     return null
   }
@@ -183,7 +196,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json()
-        const { message, currentTotals, foodEntries, chatSessionId, imageDataUrl } = body
+        const { message, chatSessionId, imageDataUrl, date } = body
 
         const hasText = typeof message === 'string' && message.trim().length > 0
         const hasImage = typeof imageDataUrl === 'string' && imageDataUrl.trim().length > 0
@@ -193,31 +206,45 @@ export async function POST(request: NextRequest) {
           return
         }
 
+        if (!date) {
+          sendUpdate({ type: "error", error: "Date parameter is required" })
+          controller.close()
+          return
+        }
+
         sendUpdate({ type: "status", message: "Processing your request..." })
+
+        // Get current user ID
+        const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
+        
+        // Ensure date is a Date object
+        const targetDate = new Date(date)
+        const { totals, foodEntries: currentFoodEntries } = await getCurrentNutritionalData(userId, targetDate)
 
         // Build conversation history
         const builtMessages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: any; tool_calls?: any; tool_call_id?: string }> = []
         
         let contextMessage = ""
-        if (currentTotals) {
-          contextMessage = "Current daily totals: " + currentTotals.calories + " calories, " + 
-                          currentTotals.protein + "g protein, " + currentTotals.carbs + "g carbs, " + 
-                          currentTotals.fat + "g fat, " + currentTotals.fiber + "g fiber, " +
-                          currentTotals.salt + "g salt."
+        if (totals) {
+          contextMessage = "Current daily totals: " + totals.calories + " calories, " + 
+                          totals.protein + "g protein, " + totals.carbs + "g carbs, " + 
+                          totals.fat + "g fat, " + totals.fiber + "g fiber, " +
+                          totals.salt + "g salt."
         }
         
         let foodEntriesContext = "No food entries logged today yet."
-        if (foodEntries && foodEntries.length > 0) {
-          const entryList = foodEntries.map((entry: any) => entry.name + " (" + entry.quantity + ") - ID: " + entry.id).join(', ')
-          foodEntriesContext = "Current food entries: " + entryList
+        if (currentFoodEntries && currentFoodEntries.length > 0) {
+          const tableHeader = "Current food entries table:"
+          const tableRows = currentFoodEntries.map((entry: any, index: number) => 
+            `${index + 1}. ${entry.name} (${entry.quantity}) - ID: ${entry.id}\n   Macros: ${entry.calories} kcal, ${entry.protein}g protein, ${entry.carbs}g carbs, ${entry.fat}g fat, ${entry.fiber}g fiber, ${entry.salt}g salt`
+          ).join('\n')
+          foodEntriesContext = `${tableHeader}\n${tableRows}`
         }
 
         const systemContent = SYSTEM_PROMPT + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext)
         builtMessages.push({ role: "system", content: systemContent })
 
         if (chatSessionId) {
-          const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
-
           const chatSession = await prisma.chatSession.findFirst({
             where: {
               id: chatSessionId,
@@ -291,15 +318,22 @@ export async function POST(request: NextRequest) {
         const userText = (typeof message === 'string' && message.trim().length > 0) ? message : fallbackText
         let userMessageContent: any = userText
         if (imageDataUrl && typeof imageDataUrl === 'string') {
-          userMessageContent = [
-            { type: "text", text: userText },
-            { type: "image_url", image_url: { url: imageDataUrl } }
-          ]
+          const inline = dataUrlToInline(imageDataUrl)
+          if (inline) {
+            userMessageContent = [
+              { type: "input_text", text: userText },
+              { type: "input_image", inline_data: { mime_type: inline.mime_type, data: inline.data } }
+            ]
+          } else {
+            userMessageContent = [
+              { type: "input_text", text: userText },
+              { type: "input_image", image_url: imageDataUrl }
+            ]
+          }
         }
         builtMessages.push({ role: "user", content: userMessageContent } as any)
 
         // Save user message
-        const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
         const savedUserMessage = await saveMessageToDb(
           chatSessionId,
           "user",
@@ -320,7 +354,7 @@ export async function POST(request: NextRequest) {
         })
 
         // Make initial LLM request
-        const model = "google/gemini-2.0-flash-001"
+        const model = "google/gemini-2.5-flash"
 
         const requestPayload = {
           model,
@@ -329,6 +363,14 @@ export async function POST(request: NextRequest) {
           temperature: 0.7,
           max_tokens: 1000,
         }
+
+        console.log("=== LLM REQUEST (STREAMING) ===")
+        console.log("Timestamp:", new Date().toISOString())
+        console.log("Chat Session ID:", chatSessionId)
+        console.log("User Message:", message)
+        console.log("System Message:", systemContent)
+        console.log("Full Messages Array:", JSON.stringify(builtMessages, null, 2))
+        console.log("Request Payload:", JSON.stringify(requestPayload, null, 2))
 
         const response = await fetch(OPENROUTER_API_URL, {
           method: "POST",
@@ -427,21 +469,26 @@ export async function POST(request: NextRequest) {
             try {
               switch (name) {
                 case 'add_food_entry': {
-                  const entry = await addFoodEntry(userId, parsedArgs)
+                  const entry = await addFoodEntry(userId, { ...parsedArgs, date })
                   toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`
                   result.foodAdded = entry
                   break
                 }
                 case 'edit_food_entry': {
-                  await editFoodEntry('', parsedArgs.id, parsedArgs)
+                  await editFoodEntry(userId, parsedArgs.id, parsedArgs)
                   toolResult = `Successfully updated food entry.`
                   result.foodUpdated = true
                   break
                 }
                 case 'delete_food_entry': {
-                  await deleteFoodEntry('', parsedArgs.id)
+                  await deleteFoodEntry(userId, parsedArgs.id)
                   toolResult = `Successfully deleted food entry.`
                   result.foodDeleted = true
+                  break
+                }
+                case 'lookup_nutritional_info': {
+                  const nutritionalInfo = await lookupNutritionalInfo(parsedArgs.foodDescription)
+                  toolResult = `Found nutritional information: ${JSON.stringify(nutritionalInfo)}`
                   break
                 }
               }
@@ -487,6 +534,12 @@ export async function POST(request: NextRequest) {
             temperature: 0.7,
             max_tokens: 1000,
           }
+
+          console.log("=== FOLLOW-UP REQUEST ===")
+          console.log("Timestamp:", new Date().toISOString())
+          console.log("Round:", roundCount + 1)
+          console.log("Follow-up Messages Array:", JSON.stringify(builtMessages, null, 2))
+          console.log("Follow-up Payload:", JSON.stringify(followupPayload, null, 2))
 
           const followupResponse = await fetch(OPENROUTER_API_URL, {
             method: "POST",

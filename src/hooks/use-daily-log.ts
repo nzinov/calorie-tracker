@@ -32,7 +32,7 @@ interface DailyLogData {
   totals: NutritionTotals
 }
 
-export function useDailyLog(date?: string) {
+export function useDailyLog(date: string) {
   const { data: session } = useSession()
   const [data, setData] = useState<DailyLogData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -47,7 +47,7 @@ export function useDailyLog(date?: string) {
 
     try {
       setLoading(true)
-      const params = date ? `?date=${date}` : ""
+      const params = `?date=${date}`
       const response = await fetch(`/api/daily-logs${params}`)
       
       if (!response.ok) {
@@ -116,144 +116,22 @@ export function useDailyLog(date?: string) {
   }
 
   const deleteFoodEntry = async (id: string) => {
-    // Optimistic update: remove entry from UI immediately
-    if (data) {
-      const optimisticData = {
-        ...data,
-        dailyLog: {
-          ...data.dailyLog,
-          foodEntries: data.dailyLog.foodEntries.filter(entry => entry.id !== id)
-        }
-      }
-      
-      // Recalculate totals
-      const remainingEntries = optimisticData.dailyLog.foodEntries
-      optimisticData.totals = {
-        calories: remainingEntries.reduce((sum, entry) => sum + entry.calories, 0),
-        protein: remainingEntries.reduce((sum, entry) => sum + entry.protein, 0),
-        carbs: remainingEntries.reduce((sum, entry) => sum + entry.carbs, 0),
-        fat: remainingEntries.reduce((sum, entry) => sum + entry.fat, 0),
-        fiber: remainingEntries.reduce((sum, entry) => sum + entry.fiber, 0),
-        salt: remainingEntries.reduce((sum, entry) => sum + entry.salt, 0)
-      }
-      
-      setData(optimisticData)
-    }
-
     try {
       const response = await fetch(`/api/food-entries/${id}`, {
         method: "DELETE",
       })
 
       if (!response.ok) {
-        // Revert optimistic update on failure
-        await fetchData()
         throw new Error("Failed to delete food entry")
       }
       
-      // Success - data is already optimistically updated
-    } catch (err) {
-      // Revert optimistic update on error
+      // Refresh data after successful deletion
       await fetchData()
+    } catch (err) {
       throw err
     }
   }
 
-  // Incremental state updates to avoid full refetches
-  type DataUpdate = {
-    foodEntries?: FoodEntry[]
-    totals?: NutritionTotals
-    foodAdded?: FoodEntry
-    foodUpdated?: FoodEntry
-    foodDeleted?: string
-    refetch?: boolean
-  }
-
-  const updateData = async (update: DataUpdate) => {
-    if (update.refetch) {
-      await fetchData()
-      return
-    }
-
-    setData(prev => {
-      if (!prev) return prev
-
-      // Create a working copy
-      let next: DailyLogData = {
-        dailyLog: {
-          ...prev.dailyLog,
-          foodEntries: prev.dailyLog.foodEntries,
-        },
-        totals: { ...prev.totals },
-      }
-
-      const recalcTotals = () => {
-        const list = next.dailyLog.foodEntries
-        next.totals = {
-          calories: list.reduce((s, e) => s + e.calories, 0),
-          protein: list.reduce((s, e) => s + e.protein, 0),
-          carbs: list.reduce((s, e) => s + e.carbs, 0),
-          fat: list.reduce((s, e) => s + e.fat, 0),
-          fiber: list.reduce((s, e) => s + e.fiber, 0),
-          salt: list.reduce((s, e) => s + e.salt, 0),
-        }
-      }
-
-      // Direct replacements take precedence
-      if (update.foodEntries) {
-        const mapped = update.foodEntries.map(e => ({ ...e, timestamp: new Date(e.timestamp) }))
-        next = {
-          ...next,
-          dailyLog: { ...next.dailyLog, foodEntries: mapped },
-          totals: update.totals ? update.totals : next.totals,
-        }
-        if (!update.totals) recalcTotals()
-        return next
-      }
-
-      if (update.foodAdded) {
-        const added = { ...update.foodAdded, timestamp: new Date(update.foodAdded.timestamp) }
-        next = {
-          ...next,
-          dailyLog: { ...next.dailyLog, foodEntries: [...next.dailyLog.foodEntries, added] }
-        }
-        recalcTotals()
-        return next
-      }
-
-      if (update.foodUpdated) {
-        const updated = { ...update.foodUpdated, timestamp: new Date(update.foodUpdated.timestamp) }
-        next = {
-          ...next,
-          dailyLog: {
-            ...next.dailyLog,
-            foodEntries: next.dailyLog.foodEntries.map(e => (e.id === updated.id ? updated : e))
-          }
-        }
-        recalcTotals()
-        return next
-      }
-
-      if (update.foodDeleted) {
-        next = {
-          ...next,
-          dailyLog: {
-            ...next.dailyLog,
-            foodEntries: next.dailyLog.foodEntries.filter(e => e.id !== update.foodDeleted)
-          }
-        }
-        recalcTotals()
-        return next
-      }
-
-      if (update.totals) {
-        next = { ...next, totals: update.totals }
-        return next
-      }
-
-      return prev
-    })
-  }
 
   return {
     data,
@@ -263,6 +141,5 @@ export function useDailyLog(date?: string) {
     updateFoodEntry,
     deleteFoodEntry,
     refetch: fetchData,
-    updateData,
   }
 }

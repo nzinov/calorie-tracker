@@ -143,7 +143,7 @@ prisma/
 - `POST /api/food-entries` - Add food entry
 - `PUT /api/food-entries/[id]` - Update food entry
 - `DELETE /api/food-entries/[id]` - Delete food entry
-- `POST /api/chat` - AI chat interface
+- `POST /api/chat/stream` - Streaming AI chat interface
 - `GET /api/chat-sessions` - Get chat sessions for a date
 - `POST /api/chat-sessions` - Create new chat session
 - `POST /api/chat-sessions/[id]/messages` - Add message to chat session
