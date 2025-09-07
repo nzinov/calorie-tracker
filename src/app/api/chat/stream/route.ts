@@ -1,4 +1,5 @@
 import { authOptions } from "@/lib/auth"
+import { DAILY_TARGETS } from "@/lib/constants"
 import { db as prisma } from "@/lib/db"
 import { addFoodEntry, deleteFoodEntry, editFoodEntry, getCurrentNutritionalData, lookupNutritionalInfo } from "@/lib/food"
 import { readFileSync } from "fs"
@@ -84,7 +85,47 @@ async function saveMessageToDb(chatSessionId: string, role: string, content: str
   return message
 }
 
-const SYSTEM_PROMPT = "You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:\n\n1. Help users log food by extracting nutritional information from their descriptions\n2. Provide nutritional recommendations based on their daily targets\n3. Answer nutrition-related questions\n4. Help users edit or delete existing food entries\n\nDaily targets:\n- Calories: 2000 kcal\n- Protein: 156g\n- Fat: 78g\n- Carbohydrates: 165g\n- Fiber: 37g\n- Salt: 5g\n\nIMPORTANT: Always try to estimate calories and nutritional values when users describe food, even if they don't provide exact measurements. Use your knowledge of typical serving sizes and nutritional content. For example:\n- \"I had pizza\" → estimate for 2-3 slices of typical pizza\n- \"ate some cookies\" → estimate for 2-3 average cookies\n- \"had a sandwich\" → estimate based on typical sandwich ingredients\n- When given photos, analyze all visible food items and estimate portions\n\nBe reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging.\n\nHowever, if estimation is not possible due to unfamiliar foods, specific branded products, complex restaurant dishes, or regional specialties you're not confident about, use the lookup_nutritional_info tool to get accurate data from web sources before logging the entry.\n\nMETRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible. Convert imperial measurements to metric equivalents:\n- \"1 cup\" → \"240ml\" or \"240g\" (depending on food type)\n- \"1 slice\" → \"80g\" (for bread/pizza)\n- \"1 tbsp\" → \"15ml\" or \"15g\"\n- \"1 oz\" → \"28g\"\nUse descriptive quantities like \"1 medium apple (150g)\" or \"1 slice pizza (120g)\" to be both clear and metric.\n\nYou have access to the following tools:\n- add_food_entry: Add new food entries to the log\n- edit_food_entry: Edit existing food entries\n- delete_food_entry: Delete food entries\n- lookup_nutritional_info: Look up nutritional information for unfamiliar or complex foods\n\nWhen users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools."
+function buildSystemPrompt(userTargets: { calories: number; protein: number; carbs: number; fat: number; fiber: number; salt: number }) {
+  return `You are a helpful nutrition assistant for a calorie tracking app. Your main tasks are:
+
+1. Help users log food by extracting nutritional information from their descriptions
+2. Provide nutritional recommendations based on their daily targets
+3. Answer nutrition-related questions
+4. Help users edit or delete existing food entries
+
+Daily targets:
+- Calories: ${userTargets.calories} kcal
+- Protein: ${userTargets.protein}g
+- Fat: ${userTargets.fat}g
+- Carbohydrates: ${userTargets.carbs}g
+- Fiber: ${userTargets.fiber}g
+- Salt: ${userTargets.salt}g
+
+IMPORTANT: Always try to estimate calories and nutritional values when users describe food, even if they don't provide exact measurements. Use your knowledge of typical serving sizes and nutritional content. For example:
+- "I had pizza" → estimate for 2-3 slices of typical pizza
+- "ate some cookies" → estimate for 2-3 average cookies
+- "had a sandwich" → estimate based on typical sandwich ingredients
+- When given photos, analyze all visible food items and estimate portions
+
+Be reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging.
+
+However, if estimation is not possible due to unfamiliar foods, specific branded products, complex restaurant dishes, or regional specialties you're not confident about, use the lookup_nutritional_info tool to get accurate data from web sources before logging the entry.
+
+METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible. Convert imperial measurements to metric equivalents:
+- "1 cup" → "240ml" or "240g" (depending on food type)
+- "1 slice" → "80g" (for bread/pizza)
+- "1 tbsp" → "15ml" or "15g"
+- "1 oz" → "28g"
+Use descriptive quantities like "1 medium apple (150g)" or "1 slice pizza (120g)" to be both clear and metric.
+
+You have access to the following tools:
+- add_food_entry: Add new food entries to the log
+- edit_food_entry: Edit existing food entries
+- delete_food_entry: Delete food entries
+- lookup_nutritional_info: Look up nutritional information for unfamiliar or complex foods
+
+When users describe food they ate, use the add_food_entry tool. When they want to modify or remove entries, use the appropriate tools.`
+}
 
 const tools = [
   {
@@ -217,6 +258,16 @@ export async function POST(request: NextRequest) {
         // Get current user ID
         const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
         
+        const user = await prisma.user.findUnique({ where: { id: userId } })
+        const userTargets = {
+          calories: user?.targetCalories ?? DAILY_TARGETS.calories,
+          protein: user?.targetProtein ?? DAILY_TARGETS.protein,
+          carbs: user?.targetCarbs ?? DAILY_TARGETS.carbs,
+          fat: user?.targetFat ?? DAILY_TARGETS.fat,
+          fiber: user?.targetFiber ?? DAILY_TARGETS.fiber,
+          salt: user?.targetSalt ?? DAILY_TARGETS.salt,
+        }
+        
         // Ensure date is a Date object
         const targetDate = new Date(date)
         const { totals, foodEntries: currentFoodEntries } = await getCurrentNutritionalData(userId, targetDate)
@@ -241,7 +292,7 @@ export async function POST(request: NextRequest) {
           foodEntriesContext = `${tableHeader}\n${tableRows}`
         }
 
-        const systemContent = SYSTEM_PROMPT + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext)
+        const systemContent = buildSystemPrompt(userTargets) + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext)
         builtMessages.push({ role: "system", content: systemContent })
 
         if (chatSessionId) {
