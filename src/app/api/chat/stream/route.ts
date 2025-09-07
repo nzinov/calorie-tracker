@@ -118,6 +118,8 @@ METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities
 - "1 oz" → "28g"
 Use descriptive quantities like "1 medium apple (150g)" or "1 slice pizza (120g)" to be both clear and metric.
 
+DATA RELIABILITY: When referencing existing entries (IDs, names) or daily totals, rely ONLY on the "Current food entries table" and "Current daily totals" provided in the system context below. Do NOT rely on prior assistant or user messages for IDs or totals, as they may be stale or incorrect.
+
 You have access to the following tools:
 - add_food_entry: Add new food entries to the log
 - edit_food_entry: Edit existing food entries

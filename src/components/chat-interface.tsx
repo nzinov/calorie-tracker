@@ -383,6 +383,7 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
             if (evt.type === "message" && evt.message) {
               const incoming = evt.message as ChatMessage
               setMessages(prev => {
+                // Match saved user message to placeholder by content
                 if (incoming.role === 'user') {
                   for (let i = prev.length - 1; i >= 0; i--) {
                     const pm = prev[i]
@@ -393,17 +394,46 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
                     }
                   }
                 }
+
+                // Remove global dedup for tool messages. Only dedup within the current
+                // assistant turn (nearest assistant that announced this toolCallId).
                 if (incoming.role === 'tool' && incoming.toolCallId) {
-                  // Avoid duplicate tool messages for the same tool call id
+                  const id = incoming.toolCallId
+
+                  // Find nearest assistant message that contains this toolCallId
+                  let nearestAssistantIdx = -1
                   for (let i = prev.length - 1; i >= 0; i--) {
                     const pm = prev[i]
-                    if (pm.role === 'tool' && pm.toolCallId === incoming.toolCallId) {
-                      const copy = prev.slice()
-                      copy[i] = incoming
-                      return copy
+                    if (pm.role === 'assistant') {
+                      let hasId = false
+                      if (pm.toolCalls) {
+                        try {
+                          const arr = JSON.parse(pm.toolCalls)
+                          if (Array.isArray(arr)) {
+                            hasId = arr.some((c: any) => c && (c.id === id || c.tool_call_id === id))
+                          }
+                        } catch {
+                          // best-effort fallback: substring check
+                          hasId = typeof pm.toolCalls === 'string' && pm.toolCalls.includes(id)
+                        }
+                      }
+                      if (hasId) { nearestAssistantIdx = i; break }
+                    }
+                  }
+
+                  if (nearestAssistantIdx !== -1) {
+                    // Within this turn only, replace an existing tool message with same id
+                    for (let i = prev.length - 1; i > nearestAssistantIdx; i--) {
+                      const pm = prev[i]
+                      if (pm.role === 'tool' && pm.toolCallId === id) {
+                        const copy = prev.slice()
+                        copy[i] = incoming
+                        return copy
+                      }
                     }
                   }
                 }
+
                 return [...prev, incoming]
               })
             }
