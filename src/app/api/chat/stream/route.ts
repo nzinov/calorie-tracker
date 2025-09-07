@@ -454,9 +454,9 @@ export async function POST(request: NextRequest) {
         }
 
         const result: any = { 
-          foodAdded: null,
-          foodUpdated: false,
-          foodDeleted: false
+          foodAdded: null as any,
+          foodUpdated: null as any,
+          foodDeleted: null as string | null
         }
 
         // Handle multiple rounds of tool calling in a loop
@@ -510,6 +510,10 @@ export async function POST(request: NextRequest) {
           
           // Execute each tool call
           for (const toolCall of toolCalls) {
+            // Reset data change result for this specific tool call
+            result.foodAdded = null
+            result.foodUpdated = null
+            result.foodDeleted = null
             const { id: toolCallId, function: { name, arguments: args } } = toolCall
             const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
             
@@ -526,15 +530,15 @@ export async function POST(request: NextRequest) {
                   break
                 }
                 case 'edit_food_entry': {
-                  await editFoodEntry(userId, parsedArgs.id, parsedArgs)
+                  const updated = await editFoodEntry(userId, parsedArgs.id, parsedArgs)
                   toolResult = `Successfully updated food entry.`
-                  result.foodUpdated = true
+                  result.foodUpdated = updated
                   break
                 }
                 case 'delete_food_entry': {
                   await deleteFoodEntry(userId, parsedArgs.id)
                   toolResult = `Successfully deleted food entry.`
-                  result.foodDeleted = true
+                  result.foodDeleted = parsedArgs.id
                   break
                 }
                 case 'lookup_nutritional_info': {

@@ -216,6 +216,54 @@ export function useDailyLog(date: string) {
     }
   }
 
+  // Apply server-sent data change hints without refetching
+  const applyDataUpdate = (update: { foodAdded?: any; foodUpdated?: any; foodDeleted?: string }) => {
+    setData(prev => {
+      if (!prev) return prev
+
+      let updatedEntries = prev.dailyLog.foodEntries
+
+      if (update.foodAdded) {
+        const entry = update.foodAdded
+        const newEntry = {
+          ...entry,
+          timestamp: new Date(entry.timestamp)
+        }
+        updatedEntries = [...updatedEntries, newEntry]
+      } else if (update.foodUpdated) {
+        const entry = update.foodUpdated
+        const updated = {
+          ...entry,
+          timestamp: new Date(entry.timestamp)
+        }
+        updatedEntries = updatedEntries.map(e => e.id === updated.id ? updated : e)
+      } else if (update.foodDeleted) {
+        const id = update.foodDeleted
+        updatedEntries = updatedEntries.filter(e => e.id !== id)
+      } else {
+        return prev
+      }
+
+      const newTotals = updatedEntries.reduce((totals, entry) => ({
+        calories: totals.calories + entry.calories,
+        protein: totals.protein + entry.protein,
+        carbs: totals.carbs + entry.carbs,
+        fat: totals.fat + entry.fat,
+        fiber: totals.fiber + entry.fiber,
+        salt: totals.salt + entry.salt,
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+
+      return {
+        ...prev,
+        dailyLog: {
+          ...prev.dailyLog,
+          foodEntries: updatedEntries
+        },
+        totals: newTotals
+      }
+    })
+  }
+
 
   return {
     data,
@@ -224,6 +272,7 @@ export function useDailyLog(date: string) {
     addFoodEntry,
     updateFoodEntry,
     deleteFoodEntry,
+    applyDataUpdate,
     refetch: fetchData,
   }
 }
