@@ -34,7 +34,7 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
-  const [imageName, setImageName] = useState<string | null>(null)
+  const [, setImageName] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -408,10 +408,16 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
               })
             }
             if (evt.type === "data_changed" && evt.data) {
-              if (evt.data.foodAdded && onDataUpdate) {
-                onDataUpdate({ foodAdded: evt.data.foodAdded })
-              } else if ((evt.data.foodUpdated || evt.data.foodDeleted) && onDataUpdate) {
-                onDataUpdate({ refetch: true })
+              // The useDailyLog hook now handles optimistic updates for all operations
+              // so we don't need to trigger refetch anymore
+              if (onDataUpdate) {
+                if (evt.data.foodAdded) {
+                  onDataUpdate({ foodAdded: evt.data.foodAdded })
+                } else if (evt.data.foodUpdated) {
+                  onDataUpdate({ foodUpdated: evt.data.foodUpdated })
+                } else if (evt.data.foodDeleted) {
+                  onDataUpdate({ foodDeleted: evt.data.foodDeleted })
+                }
               }
             }
             if (evt.type === "completed") {
@@ -448,6 +454,40 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
   const sendMessage = async () => {
     const text = input.trim()
     if ((text.length === 0 && !imageDataUrl) || loading) return
+    
+    // Handle /clear command
+    if (text === '/clear') {
+      try {
+        const res = await fetch(`/api/chat-sessions/${chatSessionId}/clear`, {
+          method: 'DELETE'
+        })
+        if (res.ok) {
+          setMessages([])
+          setInput("")
+          // Show a brief confirmation message
+          setTimeout(() => {
+            setMessages([{
+              role: "assistant",
+              content: "Chat messages cleared for today. Your food log data is preserved."
+            }])
+          }, 100)
+          return
+        } else {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: "Failed to clear chat messages. Please try again."
+          }])
+        }
+      } catch (error) {
+        console.error('Failed to clear chat messages:', error)
+        setMessages(prev => [...prev, {
+          role: "assistant", 
+          content: "Failed to clear chat messages. Please try again."
+        }])
+      }
+      setInput("")
+      return
+    }
     setLoading(true)
     // Show only the typing dots (no text)
     setProcessingSteps([])
@@ -624,7 +664,7 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
               } catch {}
             }, 500)
           }}
-          placeholder="Try: I had chicken and rice..."
+          placeholder="Try: I had chicken and rice... or /clear to clear chat"
           className="flex-1 border border-gray-400 rounded-lg px-3 py-2 text-sm md:text-base text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
           disabled={loading}
         />

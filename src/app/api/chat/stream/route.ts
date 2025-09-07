@@ -26,7 +26,7 @@ function getOpenRouterApiKey(): string {
     const token = readFileSync(tokenPath, 'utf8').trim()
     cachedApiKey = token
     return token
-  } catch (error) {
+  } catch (_error) {
     throw new Error('OPENROUTER_API_KEY not found in environment or ~/.openrouter.token file')
   }
 }

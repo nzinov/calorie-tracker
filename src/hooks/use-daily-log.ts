@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 
 interface FoodEntry {
@@ -38,7 +38,7 @@ export function useDailyLog(date: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     // In development, always proceed. In production, wait for session
     if (process.env.NODE_ENV === 'production' && !session) {
       setLoading(false)
@@ -69,11 +69,11 @@ export function useDailyLog(date: string) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [session, date])
 
   useEffect(() => {
     fetchData()
-  }, [session, date])
+  }, [fetchData])
 
   const addFoodEntry = async (entry: Omit<FoodEntry, "id" | "timestamp">) => {
     try {
@@ -89,7 +89,38 @@ export function useDailyLog(date: string) {
         throw new Error("Failed to add food entry")
       }
 
-      await fetchData() // Refresh data
+      const newEntry = await response.json()
+      
+      // Optimistic update - add the new entry to existing data
+      setData(prev => {
+        if (!prev) return null
+        
+        const newFoodEntry = {
+          ...newEntry,
+          timestamp: new Date(newEntry.timestamp)
+        }
+        
+        const updatedEntries = [...prev.dailyLog.foodEntries, newFoodEntry]
+        
+        // Recalculate totals
+        const newTotals = updatedEntries.reduce((totals, entry) => ({
+          calories: totals.calories + entry.calories,
+          protein: totals.protein + entry.protein,
+          carbs: totals.carbs + entry.carbs,
+          fat: totals.fat + entry.fat,
+          fiber: totals.fiber + entry.fiber,
+          salt: totals.salt + entry.salt,
+        }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+        
+        return {
+          ...prev,
+          dailyLog: {
+            ...prev.dailyLog,
+            foodEntries: updatedEntries
+          },
+          totals: newTotals
+        }
+      })
     } catch (err) {
       throw err
     }
@@ -109,7 +140,37 @@ export function useDailyLog(date: string) {
         throw new Error("Failed to update food entry")
       }
 
-      await fetchData() // Refresh data
+      const updatedEntry = await response.json()
+      
+      // Optimistic update - update the entry in existing data
+      setData(prev => {
+        if (!prev) return null
+        
+        const updatedEntries = prev.dailyLog.foodEntries.map(existingEntry => 
+          existingEntry.id === id 
+            ? { ...updatedEntry, timestamp: new Date(updatedEntry.timestamp) }
+            : existingEntry
+        )
+        
+        // Recalculate totals
+        const newTotals = updatedEntries.reduce((totals, entry) => ({
+          calories: totals.calories + entry.calories,
+          protein: totals.protein + entry.protein,
+          carbs: totals.carbs + entry.carbs,
+          fat: totals.fat + entry.fat,
+          fiber: totals.fiber + entry.fiber,
+          salt: totals.salt + entry.salt,
+        }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+        
+        return {
+          ...prev,
+          dailyLog: {
+            ...prev.dailyLog,
+            foodEntries: updatedEntries
+          },
+          totals: newTotals
+        }
+      })
     } catch (err) {
       throw err
     }
@@ -125,8 +186,31 @@ export function useDailyLog(date: string) {
         throw new Error("Failed to delete food entry")
       }
       
-      // Refresh data after successful deletion
-      await fetchData()
+      // Optimistic update - remove the entry from existing data
+      setData(prev => {
+        if (!prev) return null
+        
+        const updatedEntries = prev.dailyLog.foodEntries.filter(entry => entry.id !== id)
+        
+        // Recalculate totals
+        const newTotals = updatedEntries.reduce((totals, entry) => ({
+          calories: totals.calories + entry.calories,
+          protein: totals.protein + entry.protein,
+          carbs: totals.carbs + entry.carbs,
+          fat: totals.fat + entry.fat,
+          fiber: totals.fiber + entry.fiber,
+          salt: totals.salt + entry.salt,
+        }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+        
+        return {
+          ...prev,
+          dailyLog: {
+            ...prev.dailyLog,
+            foodEntries: updatedEntries
+          },
+          totals: newTotals
+        }
+      })
     } catch (err) {
       throw err
     }

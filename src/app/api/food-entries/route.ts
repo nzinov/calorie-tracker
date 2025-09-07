@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { addFoodEntry } from "@/lib/food"
+import { db } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
