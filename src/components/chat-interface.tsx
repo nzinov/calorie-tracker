@@ -570,12 +570,54 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
             // Display tool message as a pill
             if (!message.content) return null
             
+            // Normalize nutritional lookup tool message and format values nicely in the pill
+            const rawText = message.content
+            const lower = rawText.toLowerCase()
+            const isNutritionalLookup = lower.startsWith("found nutritional information")
+
+            // Try to extract and format JSON payload if present
+            let displayText = rawText
+            if (isNutritionalLookup) {
+              try {
+                const jsonStart = rawText.indexOf('{')
+                if (jsonStart !== -1) {
+                  const jsonStr = rawText.slice(jsonStart)
+                  const info = JSON.parse(jsonStr)
+                  const fmt = (v: any, digits = 1) => {
+                    const n = Number(v)
+                    if (!isFinite(n)) return null
+                    const rounded = Math.round(n * Math.pow(10, digits)) / Math.pow(10, digits)
+                    // Remove trailing .0 by converting back to number
+                    return Number.isInteger(rounded) ? String(rounded) : String(rounded)
+                  }
+                  const parts: string[] = []
+                  if (info.calories != null) parts.push(`${fmt(info.calories, 0)} kcal`)
+                  if (info.protein != null) parts.push(`Protein ${fmt(info.protein)}g`)
+                  if (info.carbs != null) parts.push(`Carbs ${fmt(info.carbs)}g`)
+                  if (info.fat != null) parts.push(`Fat ${fmt(info.fat)}g`)
+                  if (info.fiber != null) parts.push(`Fiber ${fmt(info.fiber)}g`)
+                  if (info.salt != null) parts.push(`Salt ${fmt(info.salt)}g`)
+                  if (parts.length > 0) {
+                    displayText = `Nutritional info: ${parts.join(' • ')}`
+                  } else {
+                    displayText = "Successfully found nutritional information."
+                  }
+                } else {
+                  displayText = "Successfully found nutritional information."
+                }
+              } catch {
+                displayText = "Successfully found nutritional information."
+              }
+            }
+
             const getActionIcon = (text: string) => {
               const t = text.toLowerCase()
               if (t.includes("added")) return "✅"
               if (t.includes("updated")) return "✏️"
               if (t.includes("deleted")) return "🗑️"
               if (t.includes("error")) return "❌"
+              // Treat nutritional lookup success as a success checkmark
+              if (t.includes("found nutritional information") || t.startsWith("nutritional info:")) return "✅"
               return "📝"
             }
             const getActionColor = (text: string) => {
@@ -589,11 +631,9 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
             return (
               <div key={index} className="flex justify-start mt-2">
                 <div className="flex flex-wrap gap-2 max-w-2xl">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${getActionColor(message.content)}`}
-                  >
-                    <span className="mr-1.5">{getActionIcon(message.content)}</span>
-                    {message.content}
+                  <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${getActionColor(displayText)}`}>
+                    <span className="mr-1.5">{isNutritionalLookup ? "✅" : getActionIcon(displayText)}</span>
+                    {displayText}
                   </span>
                 </div>
               </div>
