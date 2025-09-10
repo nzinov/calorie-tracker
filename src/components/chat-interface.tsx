@@ -587,20 +587,28 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
                     const n = Number(v)
                     if (!isFinite(n)) return null
                     const rounded = Math.round(n * Math.pow(10, digits)) / Math.pow(10, digits)
-                    // Remove trailing .0 by converting back to number
                     return Number.isInteger(rounded) ? String(rounded) : String(rounded)
                   }
-                  const parts: string[] = []
-                  if (info.calories != null) parts.push(`${fmt(info.calories, 0)} kcal`)
-                  if (info.protein != null) parts.push(`Protein ${fmt(info.protein)}g`)
-                  if (info.carbs != null) parts.push(`Carbs ${fmt(info.carbs)}g`)
-                  if (info.fat != null) parts.push(`Fat ${fmt(info.fat)}g`)
-                  if (info.fiber != null) parts.push(`Fiber ${fmt(info.fiber)}g`)
-                  if (info.salt != null) parts.push(`Salt ${fmt(info.salt)}g`)
-                  if (parts.length > 0) {
-                    displayText = `Nutritional info: ${parts.join(' • ')}`
-                  } else {
-                    displayText = "Successfully found nutritional information."
+
+                  // Supports new format only (per100g + portion)
+                  if (info && info.per100g && typeof info.per100g === 'object') {
+                    const p = info.per100g
+                    const parts: string[] = []
+                    if (p.calories != null) parts.push(`${fmt(p.calories, 0)} kcal/100g`)
+                    if (p.protein != null) parts.push(`Protein ${fmt(p.protein)}g/100g`)
+                    if (p.carbs != null) parts.push(`Carbs ${fmt(p.carbs)}g/100g`)
+                    if (p.fat != null) parts.push(`Fat ${fmt(p.fat)}g/100g`)
+                    if (p.fiber != null) parts.push(`Fiber ${fmt(p.fiber)}g/100g`)
+                    if (p.salt != null) parts.push(`Salt ${fmt(p.salt)}g/100g`)
+                    const portionBits: string[] = []
+                    if (info.portionSizeGrams != null) portionBits.push(`${fmt(info.portionSizeGrams, 0)}g`)
+                    if (info.portionDescription) portionBits.push(`(${info.portionDescription})`)
+                    const portionText = portionBits.length > 0 ? `Usual portion: ${portionBits.join(' ')}` : ''
+                    if (parts.length > 0) {
+                      displayText = `Nutritional info: ${portionText}${portionText ? ' • ' : ''}${parts.join(' • ')}`
+                    } else {
+                      displayText = "Successfully found nutritional information."
+                    }
                   }
                 } else {
                   displayText = "Successfully found nutritional information."

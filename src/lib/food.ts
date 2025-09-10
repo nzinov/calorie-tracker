@@ -134,13 +134,16 @@ export async function getCurrentNutritionalData(userId: string, date: Date) {
 
 export async function lookupNutritionalInfo(foodDescription: string): Promise<{
   name: string
-  quantity: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
-  salt: number
+  portionDescription: string
+  portionSizeGrams: number
+  per100g: {
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+    fiber: number
+    salt: number
+  }
 }> {
   // Get OpenRouter API key (reuse the same function from the chat routes)
   let cachedApiKey: string | null = null
@@ -167,18 +170,26 @@ export async function lookupNutritionalInfo(foodDescription: string): Promise<{
 
   const prompt = `I need nutritional information for: "${foodDescription}"
 
-Please give nutritional data for this food item in this exact JSON format:
+Return data for this food item in EXACTLY the following JSON shape. Important: provide macros per 100g, not per portion, and include the usual portion description and its size in grams.
 
 {
   "name": "descriptive name of the food",
-  "quantity": "estimated serving size (e.g., '2 slices', '1 cup', '150g'), prefer metric units",
-  "calories": 250,
-  "protein": 12.5,
-  "carbs": 30.2,
-  "fat": 8.1,
-  "fiber": 3.2,
-  "salt": 1.1
-}`
+  "portionDescription": "usual portion description (e.g., '1 medium apple')",
+  "portionSizeGrams": 150,
+  "per100g": {
+    "calories": 52,
+    "protein": 0.3,
+    "carbs": 13.8,
+    "fat": 0.2,
+    "fiber": 2.4,
+    "salt": 0.0
+  }
+}
+
+Rules:
+- Use metric units only.
+- If salt data is unavailable, estimate 0 for whole foods or a typical value for processed foods.
+- Do NOT include any commentary before or after the JSON.`
 
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -214,33 +225,154 @@ Please give nutritional data for this food item in this exact JSON format:
       throw new Error('No response from OpenRouter API')
     }
 
-    // Extract JSON from the response
-    const jsonMatch = content.match(/\{[\s\S]*?\}/)
-    if (!jsonMatch) {
-      throw new Error(`Could not extract JSON from response: ${content}`)
+    // Extract and robustly parse JSON from the response
+    const sanitizeAndParse = (raw: string) => {
+      // Prefer fenced code block content if present
+      const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
+      let snippet = fence ? fence[1] : raw
+      // Trim to the largest balanced JSON object
+      const start = snippet.indexOf('{')
+      if (start === -1) throw new Error('No JSON object start found')
+      // Find matching closing brace with a simple stack, respecting string literals
+      let depth = 0
+      let inStr: null | '"' = null
+      let prev = ''
+      let endIdx = -1
+      for (let i = start; i < snippet.length; i++) {
+        const ch = snippet[i]
+        if (inStr) {
+          if (ch === inStr && prev !== '\\') inStr = null
+        } else {
+          if (ch === '"') inStr = '"'
+          else if (ch === '{') depth++
+          else if (ch === '}') { depth--; if (depth === 0) { endIdx = i; break } }
+        }
+        prev = ch
+      }
+      if (endIdx === -1) throw new Error('No matching JSON object end found')
+      let jsonStr = snippet.slice(start, endIdx + 1)
+      // Sanitize common issues
+      jsonStr = jsonStr
+        .replace(/[\u201C\u201D]/g, '"') // smart quotes to normal
+        .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+        .replace(/(^|\n)\s*\/\/.*(?=\n|$)/g, '$1') // line comments
+        .replace(/,\s*([}\]])/g, '$1') // trailing commas
+      return JSON.parse(jsonStr)
     }
 
-    const nutritionalInfo = JSON.parse(jsonMatch[0])
+    let parsed: any
+    try {
+      parsed = sanitizeAndParse(content)
+    } catch (e) {
+      // As a last resort, try extracting the first {...} with a simple regex
+      const jsonMatch = content.match(/\{[\s\S]*?\}/)
+      if (!jsonMatch) {
+        throw new Error(`Could not extract JSON from response: ${content}`)
+      }
+      const fallback = jsonMatch[0].replace(/,\s*([}\]])/g, '$1')
+      parsed = JSON.parse(fallback)
+    }
 
     // Validate the response has required fields
-    const required = ['name', 'quantity', 'calories', 'protein', 'carbs', 'fat', 'fiber', 'salt']
-    for (const field of required) {
-      if (!(field in nutritionalInfo)) {
+    const requiredTop = ['name', 'portionDescription', 'portionSizeGrams', 'per100g']
+    for (const field of requiredTop) {
+      if (!(field in parsed)) {
         throw new Error(`Missing required field: ${field}`)
+      }
+    }
+    const requiredPer100 = ['calories', 'protein', 'carbs', 'fat', 'fiber', 'salt']
+    for (const field of requiredPer100) {
+      if (!(field in parsed.per100g)) {
+        // Default salt to 0 if missing; otherwise require the field
+        if (field === 'salt') { parsed.per100g.salt = 0 } else {
+          throw new Error(`Missing required field in per100g: ${field}`)
+        }
       }
     }
 
     // Ensure numeric fields are numbers
-    nutritionalInfo.calories = Number(nutritionalInfo.calories)
-    nutritionalInfo.protein = Number(nutritionalInfo.protein)
-    nutritionalInfo.carbs = Number(nutritionalInfo.carbs)
-    nutritionalInfo.fat = Number(nutritionalInfo.fat)
-    nutritionalInfo.fiber = Number(nutritionalInfo.fiber)
-    nutritionalInfo.salt = Number(nutritionalInfo.salt)
+    const toNum = (v: any) => {
+      if (typeof v === 'number') return v
+      if (typeof v === 'string') {
+        const n = parseFloat(v.replace(/[^0-9.+-eE]/g, ''))
+        if (!isFinite(n)) throw new Error(`Invalid number: ${v}`)
+        return n
+      }
+      throw new Error(`Expected number or numeric string, got ${typeof v}`)
+    }
+    parsed.portionSizeGrams = toNum(parsed.portionSizeGrams)
+    parsed.per100g.calories = toNum(parsed.per100g.calories)
+    parsed.per100g.protein = toNum(parsed.per100g.protein)
+    parsed.per100g.carbs = toNum(parsed.per100g.carbs)
+    parsed.per100g.fat = toNum(parsed.per100g.fat)
+    parsed.per100g.fiber = toNum(parsed.per100g.fiber)
+    parsed.per100g.salt = toNum(parsed.per100g.salt)
 
-    return nutritionalInfo
+    return parsed
   } catch (error) {
     console.error('Error in nutritional lookup:', error)
     throw new Error(`Failed to lookup nutritional information: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+export function canonicalNutritionKey(input: string): string {
+  return (input || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+export async function saveNutritionCacheItem(userId: string, keyRaw: string, info: {
+  name: string
+  portionDescription: string
+  portionSizeGrams: number
+  per100g: { calories: number; protein: number; carbs: number; fat: number; fiber: number; salt: number }
+}) {
+  const key = canonicalNutritionKey(keyRaw)
+  try {
+    const rec = await db.nutritionCacheItem.upsert({
+      where: { userId_key: { userId, key } },
+      update: {
+        name: info.name,
+        portionDescription: info.portionDescription,
+        portionSizeGrams: Number(info.portionSizeGrams),
+        caloriesPer100g: Number(info.per100g.calories),
+        proteinPer100g: Number(info.per100g.protein),
+        carbsPer100g: Number(info.per100g.carbs),
+        fatPer100g: Number(info.per100g.fat),
+        fiberPer100g: Number(info.per100g.fiber),
+        saltPer100g: Number(info.per100g.salt),
+        rawJson: JSON.stringify(info)
+      },
+      create: {
+        userId,
+        key,
+        name: info.name,
+        portionDescription: info.portionDescription,
+        portionSizeGrams: Number(info.portionSizeGrams),
+        caloriesPer100g: Number(info.per100g.calories),
+        proteinPer100g: Number(info.per100g.protein),
+        carbsPer100g: Number(info.per100g.carbs),
+        fatPer100g: Number(info.per100g.fat),
+        fiberPer100g: Number(info.per100g.fiber),
+        saltPer100g: Number(info.per100g.salt),
+        rawJson: JSON.stringify(info)
+      }
+    })
+    return rec
+  } catch (e) {
+    console.error('Failed to save nutrition cache item', e)
+    return null
+  }
+}
+
+export async function getNutritionCacheItems(userId: string, limit = 20) {
+  try {
+    const rows = await db.nutritionCacheItem.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      take: limit
+    })
+    return rows
+  } catch (e) {
+    console.error('Failed to load nutrition cache items', e)
+    return []
   }
 }

@@ -1,7 +1,7 @@
 import { authOptions } from "@/lib/auth"
 import { DAILY_TARGETS } from "@/lib/constants"
 import { db as prisma } from "@/lib/db"
-import { addFoodEntry, deleteFoodEntry, editFoodEntry, getCurrentNutritionalData, lookupNutritionalInfo } from "@/lib/food"
+import { addFoodEntry, deleteFoodEntry, editFoodEntry, getCurrentNutritionalData, getNutritionCacheItems, lookupNutritionalInfo, saveNutritionCacheItem } from "@/lib/food"
 import { readFileSync } from "fs"
 import { getServerSession } from "next-auth/next"
 import { NextRequest } from "next/server"
@@ -111,6 +111,8 @@ Be reasonable with estimates but always provide them rather than asking for more
 
 However, if estimation is not possible due to unfamiliar foods, specific branded products, complex restaurant dishes, or regional specialties you're not confident about, use the lookup_nutritional_info tool to get accurate data from web sources before logging the entry.
 
+LOOKUP TOOL RETURN FORMAT: The lookup_nutritional_info tool returns the usual portion description and size in grams, plus nutritional values per 100g. When you receive this data, compute the calories and macros for the user's consumed amount (use their stated amount; if not provided, use the usual portion grams). Then call add_food_entry with the computed totals for the consumed quantity and a clear metric quantity string.
+
 METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible. Convert imperial measurements to metric equivalents:
 - "1 cup" → "240ml" or "240g" (depending on food type)
 - "1 slice" → "80g" (for bread/pizza)
@@ -140,7 +142,7 @@ const tools = [
         properties: {
           name: { type: "string", description: "Name of the food" },
           quantity: { type: "string", description: "Amount consumed in metric units when possible (e.g., 150g, 240ml, 1 medium apple 150g)" },
-          calories: { type: "number", description: "Calories per serving" },
+          calories: { type: "number", description: "Calories for the consumed quantity" },
           protein: { type: "number", description: "Protein in grams" },
           carbs: { type: "number", description: "Carbohydrates in grams" },
           fat: { type: "number", description: "Fat in grams" },
@@ -162,7 +164,7 @@ const tools = [
           id: { type: "string", description: "ID of the food entry to edit" },
           name: { type: "string", description: "New name of the food" },
           quantity: { type: "string", description: "New amount in metric units when possible" },
-          calories: { type: "number", description: "New calories" },
+          calories: { type: "number", description: "New calories for the consumed quantity" },
           protein: { type: "number", description: "New protein in grams" },
           carbs: { type: "number", description: "New carbohydrates in grams" },
           fat: { type: "number", description: "New fat in grams" },
@@ -273,6 +275,7 @@ export async function POST(request: NextRequest) {
         // Ensure date is a Date object
         const targetDate = new Date(date)
         const { totals, foodEntries: currentFoodEntries } = await getCurrentNutritionalData(userId, targetDate)
+        const cacheItems = await getNutritionCacheItems(userId, 30)
 
         // Build conversation history
         const builtMessages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: any; tool_calls?: any; tool_call_id?: string }> = []
@@ -294,7 +297,19 @@ export async function POST(request: NextRequest) {
           foodEntriesContext = `${tableHeader}\n${tableRows}`
         }
 
-        const systemContent = buildSystemPrompt(userTargets) + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext)
+        // Build nutrition cache context
+        let cacheContext = ""
+        if (cacheItems && cacheItems.length > 0) {
+          const header = "Known nutrition cache entries (per 100g):"
+          const rows = cacheItems.map((c: any, i: number) => {
+            const p = `cal ${Math.round(c.caloriesPer100g)} kcal, prot ${Number(c.proteinPer100g).toFixed(1)}g, carbs ${Number(c.carbsPer100g).toFixed(1)}g, fat ${Number(c.fatPer100g).toFixed(1)}g, fiber ${Number(c.fiberPer100g).toFixed(1)}g, salt ${Number(c.saltPer100g).toFixed(2)}g`
+            const portion = `${Math.round(c.portionSizeGrams)}g (${c.portionDescription})`
+            return `${i + 1}. ${c.name} — usual portion ${portion}; per100g: ${p}`
+          }).join('\n')
+          cacheContext = `${header}\n${rows}`
+        }
+
+        const systemContent = buildSystemPrompt(userTargets) + (contextMessage ? "\n\n" + contextMessage + "\n\n" + foodEntriesContext : "\n\n" + foodEntriesContext) + (cacheContext ? "\n\n" + cacheContext : "")
         builtMessages.push({ role: "system", content: systemContent })
 
         if (chatSessionId) {
@@ -545,6 +560,12 @@ export async function POST(request: NextRequest) {
                 }
                 case 'lookup_nutritional_info': {
                   const nutritionalInfo = await lookupNutritionalInfo(parsedArgs.foodDescription)
+                  // Save to per-user cache
+                  try {
+                    await saveNutritionCacheItem(userId, parsedArgs.foodDescription, nutritionalInfo)
+                  } catch (e) {
+                    console.error('Failed to cache nutritional info', e)
+                  }
                   toolResult = `Found nutritional information: ${JSON.stringify(nutritionalInfo)}`
                   break
                 }
