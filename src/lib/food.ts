@@ -170,7 +170,7 @@ export async function lookupNutritionalInfo(foodDescription: string): Promise<{
 
   const prompt = `I need nutritional information for: "${foodDescription}"
 
-Return data for this food item in EXACTLY the following JSON shape. Important: provide macros per 100g, not per portion, and include the usual portion description and its size in grams.
+Use integrated web search to find authoritative nutrition sources (e.g., USDA, brand labels, manufacturer pages) before answering. Return data for this food item in EXACTLY the following JSON shape. Important: provide macros per 100g, not per portion, and include the usual portion description and its size in grams.
 
 {
   "name": "descriptive name of the food",
@@ -192,6 +192,7 @@ Rules:
 - Do NOT include any commentary before or after the JSON.`
 
   try {
+    const MODEL = process.env.OPENROUTER_LOOKUP_MODEL || 'openai/gpt-5'
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -201,8 +202,43 @@ Rules:
         'X-Title': 'Calorie Tracker App'
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-3.5-sonnet',
+        model: MODEL,
         max_tokens: 1000,
+        temperature: 0.2,
+        // Enable reasoning/thinking and integrated web search (provider-handled)
+        reasoning: { effort: 'low' },
+        tools: [{ type: 'web_search' }],
+        tool_choice: 'auto',
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'nutrition_lookup_result',
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'portionDescription', 'portionSizeGrams', 'per100g'],
+              properties: {
+                name: { type: 'string', minLength: 1 },
+                portionDescription: { type: 'string', minLength: 1 },
+                portionSizeGrams: { type: 'number' },
+                per100g: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['calories', 'protein', 'carbs', 'fat', 'fiber', 'salt'],
+                  properties: {
+                    calories: { type: 'number' },
+                    protein: { type: 'number' },
+                    carbs: { type: 'number' },
+                    fat: { type: 'number' },
+                    fiber: { type: 'number' },
+                    salt: { type: 'number' }
+                  }
+                }
+              }
+            },
+            strict: true
+          }
+        },
         messages: [
           {
             role: 'user',
@@ -212,66 +248,34 @@ Rules:
       })
     })
 
+    // Verbose logging of provider response (status + headers)
+    try {
+      console.log('[lookup] OpenRouter status:', response.status, response.statusText)
+      const hdrs: Record<string, string> = {}
+      response.headers.forEach((v, k) => { hdrs[k] = v })
+      console.log('[lookup] OpenRouter headers:', JSON.stringify(hdrs, null, 2))
+    } catch {}
+
     if (!response.ok) {
       let errBody: any = null
       try { errBody = await response.json() } catch { try { errBody = await response.text() } catch {} }
+      try { console.error('[lookup] OpenRouter error body:', typeof errBody === 'string' ? errBody : JSON.stringify(errBody, null, 2)) } catch {}
       throw new Error(`OpenRouter request failed: ${response.status} ${response.statusText} - ${JSON.stringify(errBody)}`)
     }
 
     const data = await response.json()
+    try { console.log('[lookup] OpenRouter response body:', JSON.stringify(data, null, 2)) } catch {}
     const content = data.choices?.[0]?.message?.content
 
     if (!content) {
       throw new Error('No response from OpenRouter API')
     }
 
-    // Extract and robustly parse JSON from the response
-    const sanitizeAndParse = (raw: string) => {
-      // Prefer fenced code block content if present
-      const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
-      let snippet = fence ? fence[1] : raw
-      // Trim to the largest balanced JSON object
-      const start = snippet.indexOf('{')
-      if (start === -1) throw new Error('No JSON object start found')
-      // Find matching closing brace with a simple stack, respecting string literals
-      let depth = 0
-      let inStr: null | '"' = null
-      let prev = ''
-      let endIdx = -1
-      for (let i = start; i < snippet.length; i++) {
-        const ch = snippet[i]
-        if (inStr) {
-          if (ch === inStr && prev !== '\\') inStr = null
-        } else {
-          if (ch === '"') inStr = '"'
-          else if (ch === '{') depth++
-          else if (ch === '}') { depth--; if (depth === 0) { endIdx = i; break } }
-        }
-        prev = ch
-      }
-      if (endIdx === -1) throw new Error('No matching JSON object end found')
-      let jsonStr = snippet.slice(start, endIdx + 1)
-      // Sanitize common issues
-      jsonStr = jsonStr
-        .replace(/[\u201C\u201D]/g, '"') // smart quotes to normal
-        .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
-        .replace(/(^|\n)\s*\/\/.*(?=\n|$)/g, '$1') // line comments
-        .replace(/,\s*([}\]])/g, '$1') // trailing commas
-      return JSON.parse(jsonStr)
+    if (typeof content !== 'string') {
+      throw new Error('Expected JSON string content from model')
     }
 
-    let parsed: any
-    try {
-      parsed = sanitizeAndParse(content)
-    } catch (e) {
-      // As a last resort, try extracting the first {...} with a simple regex
-      const jsonMatch = content.match(/\{[\s\S]*?\}/)
-      if (!jsonMatch) {
-        throw new Error(`Could not extract JSON from response: ${content}`)
-      }
-      const fallback = jsonMatch[0].replace(/,\s*([}\]])/g, '$1')
-      parsed = JSON.parse(fallback)
-    }
+    const parsed: any = JSON.parse(content)
 
     // Validate the response has required fields
     const requiredTop = ['name', 'portionDescription', 'portionSizeGrams', 'per100g']
