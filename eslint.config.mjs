@@ -15,6 +15,8 @@ const eslintConfig = [
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "warn",
+      // Do not fail builds on stylistic const preference
+      "prefer-const": "warn",
       "react-hooks/exhaustive-deps": "warn",
       "@next/next/no-img-element": "warn",
       "react/no-unescaped-entities": "off",
