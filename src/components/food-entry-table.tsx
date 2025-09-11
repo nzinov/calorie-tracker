@@ -83,7 +83,7 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                     <td className="py-1.5 px-2 md:px-3 font-medium text-gray-900 text-xs">{entry.name}</td>
                     <td className="py-1.5 px-2 md:px-3 text-gray-800 text-xs">{entry.quantity}</td>
                     <td className="py-1.5 px-2 md:px-3 text-right font-medium text-gray-900 text-xs">{entry.calories.toFixed(0)}</td>
-                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.protein.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{(entry.calories < entry.protein * 10 ? '💪' : '')} <span style={{transform: 'scale(1.2)'}}>{entry.protein.toFixed(1)}</span>g</td>
                     <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.carbs.toFixed(1)}g</td>
                     <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fat.toFixed(1)}g</td>
                     <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fiber.toFixed(1)}g</td>
