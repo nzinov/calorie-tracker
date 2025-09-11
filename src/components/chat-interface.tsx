@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { MarkdownRenderer } from "./markdown-renderer"
 
 interface ChatMessage {
   id?: string
@@ -661,7 +662,13 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
                           : "bg-gray-200 text-gray-900"
                       }`}
                     >
-                      {message.content && <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{message.content}</p>}
+                      {message.content && (
+                        message.role === "assistant" ? (
+                          <MarkdownRenderer content={message.content} />
+                        ) : (
+                          <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                        )
+                      )}
                     </div>
                   </div>
                 </div>
