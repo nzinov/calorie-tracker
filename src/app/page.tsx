@@ -4,6 +4,7 @@ import { AuthButton } from "@/components/auth-button"
 import { AuthGuard } from "@/components/auth-guard"
 import { ChatInterface } from "@/components/chat-interface"
 import { FoodEntryTable } from "@/components/food-entry-table"
+import { FoodEntryEditModal } from "@/components/food-entry-edit-modal"
 import { NutritionDashboard } from "@/components/nutrition-dashboard"
 import { useDailyLog } from "@/hooks/use-daily-log"
 import { useState } from "react"
@@ -13,7 +14,8 @@ export default function Home() {
     const today = new Date()
     return today.toISOString().split('T')[0]
   })
-  const { data, loading, error, deleteFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
+  const { data, loading, error, deleteFoodEntry, updateFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
+  const [editingEntry, setEditingEntry] = useState<any>(null)
 
   const handleDeleteEntry = async (id: string) => {
     try {
@@ -21,6 +23,18 @@ export default function Home() {
     } catch (error) {
       console.error("Failed to delete entry:", error)
     }
+  }
+
+  const handleUpdateEntry = async (entry: any) => {
+    try {
+      await updateFoodEntry(entry.id, entry)
+    } catch (error) {
+      console.error("Failed to update entry:", error)
+    }
+  }
+
+  const handleEditEntry = (entry: any) => {
+    setEditingEntry(entry)
   }
 
 
@@ -89,7 +103,7 @@ export default function Home() {
               )}
               <FoodEntryTable 
                 entries={data?.dailyLog?.foodEntries || []}
-                onEdit={(entry) => console.log("Edit:", entry)}
+                onEdit={handleEditEntry}
                 onDelete={handleDeleteEntry}
               />
             </div>
@@ -105,6 +119,15 @@ export default function Home() {
         </div>
       </main>
       </div>
+      
+      {editingEntry && (
+        <FoodEntryEditModal
+          entry={editingEntry}
+          onUpdate={handleUpdateEntry}
+          onDelete={handleDeleteEntry}
+          onClose={() => setEditingEntry(null)}
+        />
+      )}
     </AuthGuard>
   )
 }

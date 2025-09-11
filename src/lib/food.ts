@@ -380,3 +380,20 @@ export async function getNutritionCacheItems(userId: string, limit = 20) {
     return []
   }
 }
+
+export async function deleteNutritionCacheItem(userId: string, id: string) {
+  // Verify the item belongs to the user
+  const item = await db.nutritionCacheItem.findFirst({
+    where: {
+      id,
+      userId
+    }
+  })
+  
+  if (!item) {
+    throw new Error('Nutrition cache item not found or access denied')
+  }
+
+  await db.nutritionCacheItem.delete({ where: { id } })
+  return { ok: true }
+}
