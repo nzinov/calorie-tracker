@@ -3,7 +3,7 @@ import React from 'react'
 // Simple markdown renderer for assistant responses
 export function MarkdownRenderer({ content }: { content: string }) {
   if (!content) {
-    return <p className="whitespace-pre-wrap break-words"></p>
+    return <p className="text-xs md:text-sm whitespace-pre-wrap break-words"></p>
   }
   
   // Detect if content has markdown-like patterns
@@ -11,7 +11,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
   
   if (!hasMarkdownPatterns) {
     // Plain text - render normally
-    return <p className="whitespace-pre-wrap break-words">{content}</p>
+    return <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{content}</p>
   }
   
   // Convert markdown to HTML
@@ -22,7 +22,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
   
   return (
     <div 
-      className="whitespace-pre-wrap break-words"
+      className="text-xs md:text-sm whitespace-pre-wrap break-words"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )
