@@ -313,6 +313,32 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
     }
   }, [chatSessionId, hasLoadedInitialMessages])
 
+  // Maintain a live SSE connection that streams new events from DB
+  useEffect(() => {
+    let cancelled = false
+    let controller: AbortController | null = null
+    const start = async () => {
+      if (!chatSessionId) return
+      controller = new AbortController()
+      try {
+        const since = new Date(Date.now() - 2000).toISOString()
+        const res = await fetch(`/api/chat/events/stream?chatSessionId=${encodeURIComponent(chatSessionId)}&since=${encodeURIComponent(since)}`,
+          { signal: controller.signal })
+        if (!res.ok || !res.body) return
+        await parseStream(res)
+      } catch (e) {
+        if (cancelled) return
+        // Retry shortly
+        setTimeout(start, 1000)
+      }
+    }
+    start()
+    return () => {
+      cancelled = true
+      try { controller?.abort() } catch {}
+    }
+  }, [chatSessionId])
+
   const loadChatSession = async () => {
     try {
       const params = date ? `?date=${date}` : ""
@@ -529,7 +555,7 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
     setMessages(prev => [...prev, { role: "user", content: placeholder } as ChatMessage])
     setInput("")
     try {
-      const res = await fetch(`/api/chat/stream`, {
+      const res = await fetch(`/api/chat/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -545,7 +571,7 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
         console.error("Failed to send message")
         return
       }
-      await parseStream(res)
+      // We do not read the body; processing happens in background and events arrive via SSE
     } catch (e) {
       setLoading(false)
       setProcessingSteps([])

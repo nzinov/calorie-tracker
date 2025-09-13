@@ -193,6 +193,61 @@ Rules:
 
   try {
     const MODEL = process.env.OPENROUTER_LOOKUP_MODEL || 'openai/gpt-5'
+    const reqBody = {
+      model: MODEL,
+      max_tokens: 1000,
+      temperature: 0.2,
+      // Enable reasoning/thinking and integrated web search (provider-handled)
+      reasoning: { effort: 'low' },
+      tools: [{ type: 'web_search' }],
+      tool_choice: 'auto',
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'nutrition_lookup_result',
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name', 'portionDescription', 'portionSizeGrams', 'per100g'],
+            properties: {
+              name: { type: 'string', minLength: 1 },
+              portionDescription: { type: 'string', minLength: 1 },
+              portionSizeGrams: { type: 'number' },
+              per100g: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['calories', 'protein', 'carbs', 'fat', 'fiber', 'salt'],
+                properties: {
+                  calories: { type: 'number' },
+                  protein: { type: 'number' },
+                  carbs: { type: 'number' },
+                  fat: { type: 'number' },
+                  fiber: { type: 'number' },
+                  salt: { type: 'number' }
+                }
+              }
+            }
+          },
+          strict: true
+        }
+      },
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
+    }
+
+    // Log full lookup request (sanitized)
+    try {
+      console.log('=== LOOKUP REQUEST ===')
+      console.log('Timestamp:', new Date().toISOString())
+      console.log('Model:', MODEL)
+      console.log('Prompt:', prompt)
+      console.log('Request Payload:', JSON.stringify(reqBody, null, 2))
+    } catch {}
+
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -201,51 +256,7 @@ Rules:
         'HTTP-Referer': 'http://localhost:3001',
         'X-Title': 'Calorie Tracker App'
       },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1000,
-        temperature: 0.2,
-        // Enable reasoning/thinking and integrated web search (provider-handled)
-        reasoning: { effort: 'low' },
-        tools: [{ type: 'web_search' }],
-        tool_choice: 'auto',
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'nutrition_lookup_result',
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['name', 'portionDescription', 'portionSizeGrams', 'per100g'],
-              properties: {
-                name: { type: 'string', minLength: 1 },
-                portionDescription: { type: 'string', minLength: 1 },
-                portionSizeGrams: { type: 'number' },
-                per100g: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['calories', 'protein', 'carbs', 'fat', 'fiber', 'salt'],
-                  properties: {
-                    calories: { type: 'number' },
-                    protein: { type: 'number' },
-                    carbs: { type: 'number' },
-                    fat: { type: 'number' },
-                    fiber: { type: 'number' },
-                    salt: { type: 'number' }
-                  }
-                }
-              }
-            },
-            strict: true
-          }
-        },
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      })
+      body: JSON.stringify(reqBody)
     })
 
     // Verbose logging of provider response (status + headers)

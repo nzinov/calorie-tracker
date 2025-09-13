@@ -223,12 +223,24 @@ function dataUrlToInline(imageDataUrl: string): { data: string; mime_type: strin
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
+  // Track whether the client is still connected to the SSE stream.
+  let streamOpen = true
   
   const stream = new ReadableStream({
     async start(controller) {
+      const safeClose = () => { try { controller.close() } catch {} }
       const sendUpdate = (data: any) => {
-        const json = JSON.stringify(data)
-        controller.enqueue(encoder.encode(`data: ${json}\n\n`))
+        if (!streamOpen) return false
+        try {
+          const json = JSON.stringify(data)
+          controller.enqueue(encoder.encode(`data: ${json}\n\n`))
+          return true
+        } catch (e) {
+          // Client likely disconnected; stop attempting to enqueue but continue processing.
+          streamOpen = false
+          try { console.warn("[stream] client disconnected; continuing processing") } catch {}
+          return false
+        }
       }
 
       try {
@@ -236,7 +248,7 @@ export async function POST(request: NextRequest) {
         
         if (process.env.NODE_ENV !== 'development' && !(session as any)?.user?.id) {
           sendUpdate({ type: "error", error: "Unauthorized" })
-          controller.close()
+          safeClose()
           return
         }
 
@@ -247,13 +259,13 @@ export async function POST(request: NextRequest) {
         const hasImage = typeof imageDataUrl === 'string' && imageDataUrl.trim().length > 0
         if (!hasText && !hasImage) {
           sendUpdate({ type: "error", error: "Message or image is required" })
-          controller.close()
+          safeClose()
           return
         }
 
         if (!date) {
           sendUpdate({ type: "error", error: "Date parameter is required" })
-          controller.close()
+          safeClose()
           return
         }
 
@@ -451,6 +463,14 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify(requestPayload),
         })
 
+        // Log response meta and body
+        try {
+          console.log("[STREAM] OpenRouter status:", response.status, response.statusText)
+          const hdrs: Record<string, string> = {}
+          response.headers.forEach((v, k) => { hdrs[k] = v })
+          console.log("[STREAM] OpenRouter headers:", JSON.stringify(hdrs, null, 2))
+        } catch {}
+
         if (!response.ok) {
           let errBody: any = null
           try { errBody = await response.json() } catch { try { errBody = await response.text() } catch {}
@@ -459,11 +479,12 @@ export async function POST(request: NextRequest) {
           const providerError = extractProviderError(errBody)
           console.error("OpenRouter initial request failed:", msg, providerError || "")
           sendUpdate({ type: "error", error: msg, providerError, details: errBody })
-          controller.close()
+          safeClose()
           return
         }
 
         const data = await response.json()
+        try { console.log("[STREAM] OpenRouter response body:", JSON.stringify(data, null, 2)) } catch {}
         const aiMessage = data.choices[0]?.message
 
         if (!aiMessage) {
@@ -542,7 +563,7 @@ export async function POST(request: NextRequest) {
               switch (name) {
                 case 'add_food_entry': {
                   const entry = await addFoodEntry(userId, { ...parsedArgs, date })
-                  toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`
+                  toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log. ID: ${entry.id}`
                   result.foodAdded = entry
                   break
                 }
@@ -630,6 +651,13 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify(followupPayload),
           })
           
+          try {
+            console.log("[STREAM] Follow-up status:", followupResponse.status, followupResponse.statusText)
+            const fh: Record<string, string> = {}
+            followupResponse.headers.forEach((v, k) => { fh[k] = v })
+            console.log("[STREAM] Follow-up headers:", JSON.stringify(fh, null, 2))
+          } catch {}
+
           if (!followupResponse.ok) {
             let errBody: any = null
             try { errBody = await followupResponse.json() } catch { try { errBody = await followupResponse.text() } catch {}
@@ -638,11 +666,12 @@ export async function POST(request: NextRequest) {
             const providerError = extractProviderError(errBody)
             console.error("OpenRouter follow-up request failed:", msg, providerError || "")
             sendUpdate({ type: "error", error: msg, providerError, details: errBody })
-            controller.close()
+            safeClose()
             return
           }
           
           const followupData = await followupResponse.json()
+          try { console.log("[STREAM] Follow-up response body:", JSON.stringify(followupData, null, 2)) } catch {}
           currentMessage = followupData.choices[0]?.message
           roundCount++
         }
@@ -655,7 +684,13 @@ export async function POST(request: NextRequest) {
         sendUpdate({ type: "error", error: msg })
       }
       
-      controller.close()
+      safeClose()
+    }
+  ,
+    cancel() {
+      // Consumer canceled the stream (e.g., page navigated or reloaded)
+      streamOpen = false
+      try { console.warn("[stream] cancel received; will stop sending updates but continue processing") } catch {}
     }
   })
 

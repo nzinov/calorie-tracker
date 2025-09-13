@@ -116,6 +116,7 @@ model ChatSession {
 
   dailyLog DailyLog      @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
+  events   ChatEvent[]
 
   @@map("chat_sessions")
 }
@@ -134,6 +135,19 @@ model ChatMessage {
   chatSession ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
 
   @@map("chat_messages")
+}
+
+model ChatEvent {
+  id            String   @id @default(cuid())
+  chatSessionId String
+  type          String   // 'status' | 'message' | 'data_changed' | 'error' | 'completed'
+  payload       String   // JSON payload matching SSE event body
+  createdAt     DateTime @default(now())
+
+  chatSession ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@index([chatSessionId, createdAt])
+  @@map("chat_events")
 }
 
 model NutritionCacheItem {
