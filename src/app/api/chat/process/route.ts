@@ -267,7 +267,7 @@ export async function POST(request: NextRequest) {
             switch (name) {
               case 'add_food_entry': {
                 const entry = await addFoodEntry(userId, { ...parsedArgs, date })
-                toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log. ID: ${entry.id}`
+                toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`
                 result.foodAdded = entry
                 break
               }
