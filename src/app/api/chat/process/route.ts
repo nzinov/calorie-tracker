@@ -1,3 +1,6 @@
+import { readFileSync } from "fs"
+import { homedir } from "os"
+import { join } from "path"
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
@@ -26,9 +29,6 @@ function getOpenRouterApiKey(): string {
   if (cachedApiKey) return cachedApiKey
   if (process.env.OPENROUTER_API_KEY) { cachedApiKey = process.env.OPENROUTER_API_KEY; return cachedApiKey }
   try {
-    const { readFileSync } = require('fs') as typeof import('fs')
-    const { homedir } = require('os') as typeof import('os')
-    const { join } = require('path') as typeof import('path')
     const tokenPath = join(homedir(), '.openrouter.token')
     const token = readFileSync(tokenPath, 'utf8').trim()
     cachedApiKey = token
