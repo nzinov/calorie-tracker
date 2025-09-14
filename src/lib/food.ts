@@ -169,68 +169,53 @@ export async function lookupNutritionalInfo(foodDescription: string): Promise<{
   }
 
   const prompt = `I need nutritional information for: "${foodDescription}"
-
-Use integrated web search to find authoritative nutrition sources (e.g., USDA, brand labels, manufacturer pages) before answering. Return data for this food item in EXACTLY the following JSON shape. Important: provide macros per 100g, not per portion, and include the usual portion description and its size in grams.
-
-{
-  "name": "descriptive name of the food",
-  "portionDescription": "usual portion description (e.g., '1 medium apple')",
-  "portionSizeGrams": 150,
-  "per100g": {
-    "calories": 52,
-    "protein": 0.3,
-    "carbs": 13.8,
-    "fat": 0.2,
-    "fiber": 2.4,
-    "salt": 0.0
-  }
-}
-
-Rules:
-- Use metric units only.
-- If salt data is unavailable, estimate 0 for whole foods or a typical value for processed foods.
-- Do NOT include any commentary before or after the JSON.`
+Provide macros per 100g (not per portion), and include the usual portion description with its size in grams. Use search results provided to you but also use your own reasoning. 
+Important: Do not reply with free-form text. Call the tool \"nutrition_lookup_result\" with the computed fields.`
 
   try {
     const MODEL = process.env.OPENROUTER_LOOKUP_MODEL || 'openai/gpt-5'
     const reqBody = {
       model: MODEL,
-      max_tokens: 1000,
+      max_tokens: 10000,
       temperature: 0.2,
       // Enable reasoning/thinking and integrated web search (provider-handled)
       reasoning: { effort: 'low' },
-      tools: [{ type: 'web_search' }],
-      tool_choice: 'auto',
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'nutrition_lookup_result',
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['name', 'portionDescription', 'portionSizeGrams', 'per100g'],
-            properties: {
-              name: { type: 'string', minLength: 1 },
-              portionDescription: { type: 'string', minLength: 1 },
-              portionSizeGrams: { type: 'number' },
-              per100g: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['calories', 'protein', 'carbs', 'fat', 'fiber', 'salt'],
-                properties: {
-                  calories: { type: 'number' },
-                  protein: { type: 'number' },
-                  carbs: { type: 'number' },
-                  fat: { type: 'number' },
-                  fiber: { type: 'number' },
-                  salt: { type: 'number' }
+      // Use OpenRouter web plugin for real-time search (provider-agnostic)
+      plugins: [ { id: 'web' } ],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'nutrition_lookup_result',
+            description: 'Return the nutrition lookup result for the requested food',
+            parameters: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'portionDescription', 'portionSizeGrams', 'per100g'],
+              properties: {
+                name: { type: 'string', minLength: 1 },
+                portionDescription: { type: 'string', minLength: 1 },
+                portionSizeGrams: { type: 'number' },
+                per100g: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['calories', 'protein', 'carbs', 'fat', 'fiber', 'salt'],
+                  properties: {
+                    calories: { type: 'number' },
+                    protein: { type: 'number' },
+                    carbs: { type: 'number' },
+                    fat: { type: 'number' },
+                    fiber: { type: 'number' },
+                    salt: { type: 'number' }
+                  }
                 }
               }
             }
-          },
-          strict: true
+          }
         }
-      },
+      ],
+      // Force the assistant to call our function tool instead of emitting content
+      tool_choice: { type: 'function', function: { name: 'nutrition_lookup_result' } },
       messages: [
         {
           role: 'user',
@@ -276,17 +261,34 @@ Rules:
 
     const data = await response.json()
     try { console.log('[lookup] OpenRouter response body:', JSON.stringify(data, null, 2)) } catch {}
-    const content = data.choices?.[0]?.message?.content
 
-    if (!content) {
+    const message = data.choices?.[0]?.message
+    if (!message) {
       throw new Error('No response from OpenRouter API')
     }
 
-    if (typeof content !== 'string') {
-      throw new Error('Expected JSON string content from model')
+    // Expect a forced function tool call with arguments
+    const toolCalls = message.tool_calls || message.toolCalls || []
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      throw new Error('Expected a function tool call from model')
     }
 
-    const parsed: any = JSON.parse(content)
+    // Find our function call regardless of casing of keys
+    let argsStr: string | null = null
+    for (const c of toolCalls) {
+      const t = c.function || c["function_call"] || {}
+      const name = t.name || c.name
+      if (name === 'nutrition_lookup_result') {
+        argsStr = t.arguments || t.args || c.arguments || null
+        break
+      }
+    }
+
+    if (!argsStr || typeof argsStr !== 'string') {
+      throw new Error('nutrition_lookup_result tool call missing string arguments')
+    }
+
+    const parsed: any = JSON.parse(argsStr)
 
     // Validate the response has required fields
     const requiredTop = ['name', 'portionDescription', 'portionSizeGrams', 'per100g']

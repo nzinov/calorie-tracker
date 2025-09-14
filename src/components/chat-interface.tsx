@@ -593,6 +593,42 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
     <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col" ref={chatRef}>
       <div className="flex-1 overflow-y-auto space-y-2" ref={messagesContainerRef}>
         {messages.map((message, index) => {
+          // Show a pill as soon as the assistant announces the lookup tool call
+          if (message.role === 'assistant' && message.toolCalls) {
+            try {
+              const calls = JSON.parse(message.toolCalls as any)
+              if (Array.isArray(calls)) {
+                const lookupCall = calls.find((c: any) => {
+                  const fn = c?.function || c?.["function_call"]
+                  return fn && fn.name === 'lookup_nutritional_info'
+                })
+                if (lookupCall) {
+                  let desc: string | null = null
+                  try {
+                    const fn = lookupCall.function || lookupCall["function_call"]
+                    const argStr = fn?.arguments || fn?.args
+                    if (typeof argStr === 'string' && argStr.trim().length > 0) {
+                      const parsed = JSON.parse(argStr)
+                      if (parsed && typeof parsed.foodDescription === 'string' && parsed.foodDescription.trim().length > 0) {
+                        desc = parsed.foodDescription.trim()
+                      }
+                    }
+                  } catch {}
+
+                  return (
+                    <div key={index} className="flex justify-start mt-2">
+                      <div className="flex flex-wrap gap-2 max-w-2xl">
+                        <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm border-blue-300 bg-blue-100 text-blue-800`}>
+                          <span className="mr-1.5">🔎</span>
+                          {desc ? `Looking up: ${desc}` : 'Looking up nutritional information…'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                }
+              }
+            } catch {}
+          }
           if (message.role === "tool") {
             // Display tool message as a pill
             if (!message.content) return null
