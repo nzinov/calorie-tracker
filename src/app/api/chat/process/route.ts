@@ -62,21 +62,7 @@ function extractProviderError(body: any): string | null {
   }
 }
 
-function dataUrlToInline(imageDataUrl: string): { data: string; mime_type: string } | null {
-  try {
-    if (!imageDataUrl || typeof imageDataUrl !== 'string') return null
-    if (imageDataUrl.startsWith('encoded:')) {
-      return { data: imageDataUrl.slice('encoded:'.length), mime_type: 'image/jpeg' }
-    }
-    const m = imageDataUrl.match(/^data:(.*?);base64,(.*)$/)
-    if (!m) return null
-    const mime_type = m[1]
-    const data = m[2]
-    return { data, mime_type }
-  } catch {
-    return null
-  }
-}
+// No image decoding needed; we pass data URLs via image_url { url }
 
 export async function POST(request: NextRequest) {
   try {
@@ -128,8 +114,9 @@ export async function POST(request: NextRequest) {
             return `${i + 1}. ${c.name} — usual portion ${portion}; per100g: ${p}`
           }).join('\n')) : '')
 
-      // Prepare first AI request (mirror original stream structure)
-      const userText = hasText ? String(message) : ''
+      // Prepare first AI request (mirror original stream route behavior)
+      const fallbackText = "Please analyze the attached photo and extract foods and nutrition."
+      const userText = hasText ? String(message) : (hasImage ? fallbackText : '')
       const uiContent = hasImage ? `${userText}${userText ? '\n' : ''}[Image attached]` : userText
       const builtMessages: Array<any> = []
       builtMessages.push({ role: 'system', content: systemContent })
@@ -172,21 +159,14 @@ export async function POST(request: NextRequest) {
         builtMessages.push(...trimmed)
       }
 
-      // Build user message content, optionally with inline image
+      // Build user message content with OpenRouter content-part schema
+      // Use text + image_url with nested { url: data_url }
       let userMessageContent: any = userText
       if (hasImage && typeof imageDataUrl === 'string') {
-        const inline = dataUrlToInline(imageDataUrl)
-        if (inline) {
-          userMessageContent = [
-            { type: 'input_text', text: userText },
-            { type: 'input_image', inline_data: { mime_type: inline.mime_type, data: inline.data } }
-          ]
-        } else {
-          userMessageContent = [
-            { type: 'input_text', text: userText },
-            { type: 'input_image', image_url: imageDataUrl }
-          ]
-        }
+        userMessageContent = [
+          { type: 'text', text: userText },
+          { type: 'image_url', image_url: { url: imageDataUrl } }
+        ]
       }
       builtMessages.push({ role: 'user', content: userMessageContent } as any)
 
