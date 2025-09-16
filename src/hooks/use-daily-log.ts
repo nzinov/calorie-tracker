@@ -33,14 +33,14 @@ interface DailyLogData {
 }
 
 export function useDailyLog(date: string) {
-  const { data: session } = useSession()
+  const { status } = useSession()
   const [data, setData] = useState<DailyLogData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
-    // In development, always proceed. In production, wait for session
-    if (process.env.NODE_ENV === 'production' && !session) {
+    // In development, always proceed. In production, wait until authenticated
+    if (process.env.NODE_ENV === 'production' && status !== 'authenticated') {
       setLoading(false)
       return
     }
@@ -69,7 +69,7 @@ export function useDailyLog(date: string) {
     } finally {
       setLoading(false)
     }
-  }, [session, date])
+  }, [status, date])
 
   useEffect(() => {
     fetchData()
