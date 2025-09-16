@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
 
       const model = 'gpt-5-mini'
 
-      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7 }
+      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'low' } }
 
       await createChatEvent(chatSessionId, 'status', { type: 'status', message: 'Processing your request...' })
 
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
 
         // Add tool results to conversation and request next round
         builtMessages.push(...toolMessages)
-        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7 }
+        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'low' } }
 
         // Log follow-up request payload
         try {
@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
           console.log("Timestamp:", new Date().toISOString())
           console.log("Round:", roundCount + 1)
           console.log("Follow-up Messages Array:", JSON.stringify(builtMessages, null, 2))
-          console.log("Follow-up Payload:", JSON.stringify({ model, temperature: 0.7, tools }, null, 2))
+          console.log("Follow-up Payload:", JSON.stringify({ model, temperature: 0.7, tools, reasoning: { effort: 'low' } }, null, 2))
         } catch {}
 
         const follow = await fetch(OPENROUTER_API_URL, {
