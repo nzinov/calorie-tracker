@@ -1,13 +1,13 @@
-import { readFileSync } from "fs"
-import { homedir } from "os"
-import { join } from "path"
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { DAILY_TARGETS } from "@/lib/constants"
 import { db as prisma } from "@/lib/db"
-import { addFoodEntry, deleteFoodEntry, editFoodEntry, getCurrentNutritionalData, getNutritionCacheItems, lookupNutritionalInfo, saveNutritionCacheItem } from "@/lib/food"
 import { createChatEvent } from "@/lib/events"
+import { addFoodEntry, deleteFoodEntry, editFoodEntry, getCurrentNutritionalData, getNutritionCacheItems, lookupNutritionalInfo, saveNutritionCacheItem } from "@/lib/food"
+import { readFileSync } from "fs"
+import { getServerSession } from "next-auth/next"
+import { NextRequest, NextResponse } from "next/server"
+import { homedir } from "os"
+import { join } from "path"
 
 // Reuse the helper shape from stream route (local copy to avoid refactor)
 async function saveMessageToDb(chatSessionId: string, role: string, content: string | null, toolCalls: string | null, toolCallId: string | null) {
@@ -181,9 +181,9 @@ export async function POST(request: NextRequest) {
         { type: 'function', function: { name: 'lookup_nutritional_info', description: 'Look up nutritional information using web search', parameters: { type: 'object', properties: { foodDescription: { type: 'string' } }, required: ['foodDescription'] } } },
       ]
 
-      const model = 'google/gemini-2.5-flash'
+      const model = 'gpt-5-mini'
 
-      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7, max_tokens: 1000 }
+      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7 }
 
       await createChatEvent(chatSessionId, 'status', { type: 'status', message: 'Processing your request...' })
 
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
 
         // Add tool results to conversation and request next round
         builtMessages.push(...toolMessages)
-        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7, max_tokens: 1000 }
+        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7 }
 
         // Log follow-up request payload
         try {
@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
           console.log("Timestamp:", new Date().toISOString())
           console.log("Round:", roundCount + 1)
           console.log("Follow-up Messages Array:", JSON.stringify(builtMessages, null, 2))
-          console.log("Follow-up Payload:", JSON.stringify({ model, temperature: 0.7, max_tokens: 1000, tools }, null, 2))
+          console.log("Follow-up Payload:", JSON.stringify({ model, temperature: 0.7, tools }, null, 2))
         } catch {}
 
         const follow = await fetch(OPENROUTER_API_URL, {
