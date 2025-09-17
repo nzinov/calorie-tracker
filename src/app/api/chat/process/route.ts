@@ -99,15 +99,10 @@ export async function POST(request: NextRequest) {
       }
 
       const targetDate = new Date(date)
-      const { totals, foodEntries: currentFoodEntries } = await getCurrentNutritionalData(userId, targetDate)
       const cacheItems = await getNutritionCacheItems(userId, 30)
 
-      // Build system + context message
-      const systemContent = buildSystemPrompt(userTargets) + (totals
-        ? "\n\n" + ("Current daily totals: " + totals.calories + " calories, " + totals.protein + "g protein, " + totals.carbs + "g carbs, " + totals.fat + "g fat, " + totals.fiber + "g fiber, " + totals.salt + "g salt.")
-        : '') + "\n\n" + ((currentFoodEntries && currentFoodEntries.length > 0)
-        ? ("Current food entries table:\n" + currentFoodEntries.map((entry: any, index: number) => `${index + 1}. ${entry.name} (${entry.quantity}) - ID: ${entry.id}\n   Macros: ${entry.calories} kcal, ${entry.protein}g protein, ${entry.carbs}g carbs, ${entry.fat}g fat, ${entry.fiber}g fiber, ${entry.salt}g salt`).join('\n'))
-        : 'No food entries logged today yet.') + (cacheItems && cacheItems.length > 0
+      // Build system + context message (without current totals and food entries)
+      const systemContent = buildSystemPrompt(userTargets) + (cacheItems && cacheItems.length > 0
         ? ("\n\nKnown nutrition cache entries (per 100g):\n" + cacheItems.map((c: any, i: number) => {
             const p = `cal ${Math.round(c.caloriesPer100g)} kcal, prot ${Number(c.proteinPer100g).toFixed(1)}g, carbs ${Number(c.carbsPer100g).toFixed(1)}g, fat ${Number(c.fatPer100g).toFixed(1)}g, fiber ${Number(c.fiberPer100g).toFixed(1)}g, salt ${Number(c.saltPer100g).toFixed(2)}g`
             const portion = `${Math.round(c.portionSizeGrams)}g (${c.portionDescription})`
@@ -263,25 +258,51 @@ export async function POST(request: NextRequest) {
           const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
           await createChatEvent(chatSessionId, 'status', { type: 'status', message: `Executing ${name}...` })
           let toolResult = ''
+          
+          // Helper function to generate generic nutritional context
+          const generateNutritionalContext = async () => {
+            // Get updated nutritional data to include in the response
+            const { totals: updatedTotals, foodEntries: updatedFoodEntries } = await getCurrentNutritionalData(userId, targetDate);
+            
+            const totalsStr = `Current daily totals: ${updatedTotals.calories} calories, ${updatedTotals.protein}g protein, ${updatedTotals.carbs}g carbs, ${updatedTotals.fat}g fat, ${updatedTotals.fiber}g fiber, ${updatedTotals.salt}g salt.`;
+            
+            let entriesStr = '';
+            if (updatedFoodEntries.length > 0) {
+              entriesStr = `Current food entries table:\n` + updatedFoodEntries.map((entry: any, index: number) => 
+                `${index + 1}. ${entry.name} (${entry.quantity}) - ID: ${entry.id}\n   Macros: ${entry.calories} kcal, ${entry.protein}g protein, ${entry.carbs}g carbs, ${entry.fat}g fat, ${entry.fiber}g fiber, ${entry.salt}g salt`
+              ).join('\n');
+            }
+            
+            return { totalsStr, entriesStr };
+          };
+          
+          // Helper function to format food operation results with current nutritional context
+          const formatFoodOperationResult = async (message: string) => {
+            const { totalsStr, entriesStr } = await generateNutritionalContext();
+            return `${message}\n\n${totalsStr}${entriesStr ? `\n${entriesStr}` : ''}`;
+          };
           try {
             switch (name) {
               case 'add_food_entry': {
-                const entry = await addFoodEntry(userId, { ...parsedArgs, date })
-                toolResult = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`
-                result.foodAdded = entry
-                break
+                const entry = await addFoodEntry(userId, { ...parsedArgs, date });
+                const message = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`;
+                toolResult = await formatFoodOperationResult(message);
+                result.foodAdded = entry;
+                break;
               }
               case 'edit_food_entry': {
-                const updated = await editFoodEntry(userId, parsedArgs.id, parsedArgs)
-                toolResult = `Successfully updated food entry.`
-                result.foodUpdated = updated
-                break
+                const updated = await editFoodEntry(userId, parsedArgs.id, parsedArgs);
+                const message = 'Successfully updated food entry.';
+                toolResult = await formatFoodOperationResult(message);
+                result.foodUpdated = updated;
+                break;
               }
               case 'delete_food_entry': {
-                await deleteFoodEntry(userId, parsedArgs.id)
-                toolResult = `Successfully deleted food entry.`
-                result.foodDeleted = parsedArgs.id
-                break
+                await deleteFoodEntry(userId, parsedArgs.id);
+                const message = 'Successfully deleted food entry.';
+                toolResult = await formatFoodOperationResult(message);
+                result.foodDeleted = parsedArgs.id;
+                break;
               }
               case 'lookup_nutritional_info': {
                 const nutritionalInfo = await lookupNutritionalInfo(parsedArgs.foodDescription)
@@ -315,7 +336,7 @@ export async function POST(request: NextRequest) {
           console.log("Timestamp:", new Date().toISOString())
           console.log("Round:", roundCount + 1)
           console.log("Follow-up Messages Array:", JSON.stringify(builtMessages, null, 2))
-          console.log("Follow-up Payload:", JSON.stringify({ model, temperature: 0.7, tools, reasoning: { effort: 'low' } }, null, 2))
+          try { errBody = await follow.json() } catch { try { errBody = await follow.text() } catch {} }
         } catch {}
 
         const follow = await fetch(OPENROUTER_API_URL, {

@@ -633,13 +633,16 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
             // Display tool message as a pill
             if (!message.content) return null
             
+            // Extract only the first line for display in the UI pill
+            const firstLine = message.content.split('\n')[0]
+            
             // Normalize nutritional lookup tool message and format values nicely in the pill
             const rawText = message.content
             const lower = rawText.toLowerCase()
             const isNutritionalLookup = lower.startsWith("found nutritional information")
 
             // Try to extract and format JSON payload if present
-            let displayText = rawText
+            let displayText = firstLine  // Only show first line in UI
             if (isNutritionalLookup) {
               try {
                 const jsonStart = rawText.indexOf('{')
