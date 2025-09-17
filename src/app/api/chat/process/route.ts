@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
 
       const model = 'gpt-5-mini'
 
-      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'low' } }
+      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'minimal' } }
 
       await createChatEvent(chatSessionId, 'status', { type: 'status', message: 'Processing your request...' })
 
@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
 
         // Add tool results to conversation and request next round
         builtMessages.push(...toolMessages)
-        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'low' } }
+        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'minimal' } }
 
         // Log follow-up request payload
         try {
