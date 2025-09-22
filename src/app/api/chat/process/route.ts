@@ -46,7 +46,7 @@ METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities
 - \"1 oz\" → \"28g\"
 Use descriptive quantities plus grams like \"1 medium (150g)\" for apples or \"1 slice (120g)\" for pizza. 
 
-IMPORTANT: Don't mention macros of the food you add or total macros of the day unless explicitly asked. User can see them in the UI.
+IMPORTANT: DO NOT mention macros of the food you add and DO NOT mention total macros of the day unless user explicitly asks you. User can see them in the UI.
 REMINDER: DO NOT call lookup_nutritional_info tool if you can find the food in the cache.
 
 `
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 
       // Build system + context message (without current totals and food entries)
       const systemContent = buildSystemPrompt(userTargets) + (cacheItems && cacheItems.length > 0
-        ? ("\n\nKnown nutrition cache entries (per 100g):\n" + cacheItems.map((c: any, i: number) => {
+        ? ("\n\n## Known nutrition cache entries (per 100g):\n" + cacheItems.map((c: any, i: number) => {
             const p = `cal ${Math.round(c.caloriesPer100g)} kcal, prot ${Number(c.proteinPer100g).toFixed(1)}g, carbs ${Number(c.carbsPer100g).toFixed(1)}g, fat ${Number(c.fatPer100g).toFixed(1)}g, fiber ${Number(c.fiberPer100g).toFixed(1)}g, salt ${Number(c.saltPer100g).toFixed(2)}g`
             const portion = `${Math.round(c.portionSizeGrams)}g (${c.portionDescription})`
             return `${i + 1}. ${c.name} — usual portion ${portion}; per100g: ${p}`
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
 
       const model = 'gpt-5-mini'
 
-      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'minimal' } }
+      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'low' } }
 
       await createChatEvent(chatSessionId, 'status', { type: 'status', message: 'Processing your request...' })
 
