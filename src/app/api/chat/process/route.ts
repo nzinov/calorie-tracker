@@ -46,7 +46,7 @@ METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities
 - \"1 oz\" → \"28g\"
 Use descriptive quantities plus grams like \"1 medium (150g)\" for apples or \"1 slice (120g)\" for pizza. 
 
-IMPORTANT: DO NOT mention macros of the food you add and DO NOT mention total macros of the day unless user explicitly asks you. User can see them in the UI.
+IMPORTANT: DO NOT mention nutritional information of the food you add and DO NOT mention total macros of the day unless user explicitly asks you. User can see them in the UI.
 REMINDER: DO NOT call lookup_nutritional_info tool if you can find the food in the cache.
 
 `
