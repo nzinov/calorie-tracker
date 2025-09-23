@@ -366,7 +366,6 @@ export async function POST(request: NextRequest) {
           console.log("Timestamp:", new Date().toISOString())
           console.log("Round:", roundCount + 1)
           console.log("Follow-up Messages Array:", JSON.stringify(builtMessages, null, 2))
-          try { errBody = await follow.json() } catch { try { errBody = await follow.text() } catch {} }
         } catch {}
 
         const follow = await fetch(OPENROUTER_API_URL, {
