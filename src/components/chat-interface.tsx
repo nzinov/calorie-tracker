@@ -317,22 +317,34 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
   useEffect(() => {
     let cancelled = false
     let controller: AbortController | null = null
-    const start = async () => {
-      if (!chatSessionId) return
+    const lastTsRef = { current: null as string | null }
+    const attemptRef = { current: 0 }
+
+    const connect = async () => {
+      if (!chatSessionId || cancelled) return
       controller = new AbortController()
+      const since = (lastTsRef.current || new Date(Date.now() - 2000).toISOString())
       try {
-        const since = new Date(Date.now() - 2000).toISOString()
-        const res = await fetch(`/api/chat/events/stream?chatSessionId=${encodeURIComponent(chatSessionId)}&since=${encodeURIComponent(since)}`,
-          { signal: controller.signal })
-        if (!res.ok || !res.body) return
-        await parseStream(res)
-      } catch (e) {
+        const res = await fetch(
+          `/api/chat/events/stream?chatSessionId=${encodeURIComponent(chatSessionId)}&since=${encodeURIComponent(since)}`,
+          { signal: controller.signal }
+        )
+        if (!res.ok || !res.body) throw new Error('Bad SSE response')
+        attemptRef.current = 0 // reset backoff on successful connect
+        await parseStream(res, (ts) => { lastTsRef.current = ts })
+        // If stream finishes without error (e.g., network change), reconnect
+        if (!cancelled) {
+          const delay = Math.min(1000 * Math.pow(2, attemptRef.current++), 15000)
+          setTimeout(connect, delay)
+        }
+      } catch (_) {
         if (cancelled) return
-        // Retry shortly
-        setTimeout(start, 1000)
+        const delay = Math.min(1000 * Math.pow(2, attemptRef.current++), 15000)
+        setTimeout(connect, delay)
       }
     }
-    start()
+
+    connect()
     return () => {
       cancelled = true
       try { controller?.abort() } catch {}
@@ -385,7 +397,7 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
     }
   }
 
-  const parseStream = async (response: Response) => {
+  const parseStream = async (response: Response, onTs?: (ts: string) => void) => {
     const reader = response.body?.getReader()
     if (!reader) return
     const decoder = new TextDecoder()
@@ -404,6 +416,10 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
           if (!payload) continue
           try {
             const evt = JSON.parse(payload)
+            // Track server-provided event timestamp for reliable resuming
+            if (evt && typeof evt._ts === 'string' && onTs) {
+              onTs(evt._ts)
+            }
             if (evt.type === "status" && evt.message) {
               setProcessingSteps(prev => [...prev, evt.message])
             }

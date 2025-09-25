@@ -44,6 +44,9 @@ export async function GET(request: NextRequest) {
             for (const ev of events) {
               try {
                 const payload = JSON.parse(ev.payload)
+                // Attach lightweight metadata for robust client-side resuming
+                // without changing existing consumer logic.
+                ;(payload as any)._ts = ev.createdAt.toISOString()
                 send(payload)
                 // Move cursor forward per-event to avoid duplicates if streaming throws
                 since = ev.createdAt.toISOString()
@@ -69,4 +72,3 @@ export async function GET(request: NextRequest) {
     },
   })
 }
-
