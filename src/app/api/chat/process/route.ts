@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
       }
 
       const targetDate = new Date(date)
+      const dateStr = date  // Keep the original date string for comparison
       const cacheItems = await getNutritionCacheItems(userId, 30)
 
       // Build system + context message (without current totals and food entries)
@@ -350,7 +351,7 @@ export async function POST(request: NextRequest) {
           const savedTool = await saveMessageToDb(chatSessionId, 'tool', toolResult, null, toolCallId)
           await createChatEvent(chatSessionId, 'message', { type: 'message', message: { id: savedTool?.id, role: 'tool', content: toolResult, toolCalls: null, toolCallId: toolCallId } })
           if (result.foodAdded || result.foodUpdated || result.foodDeleted) {
-            await createChatEvent(chatSessionId, 'data_changed', { type: 'data_changed', data: result })
+            await createChatEvent(chatSessionId, 'data_changed', { type: 'data_changed', data: result, targetDate: dateStr })
           }
 
           toolMessages.push({ role: 'tool', content: toolResult, tool_call_id: toolCallId })

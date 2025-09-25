@@ -72,8 +72,12 @@ export function useDailyLog(date: string) {
   }, [status, date])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    // Clear data when date changes to avoid working with stale data
+    if (data?.dailyLog) {
+      setData(null);
+    }
+    fetchData();
+  }, [fetchData, date])
 
   const addFoodEntry = async (entry: Omit<FoodEntry, "id" | "timestamp">) => {
     try {

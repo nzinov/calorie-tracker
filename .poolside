@@ -1,0 +1,1 @@
+If you change any files, make sure you run `npm run build` in the end and fix any build errors

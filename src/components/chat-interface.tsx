@@ -483,7 +483,9 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
             if (evt.type === "data_changed" && evt.data) {
               // The useDailyLog hook now handles optimistic updates for all operations
               // so we don't need to trigger refetch anymore
-              if (onDataUpdate) {
+              // Only apply data updates if they match the current date
+              // This prevents errors when calendar date changes while processing
+              if (onDataUpdate && date === (evt.targetDate || date)) {
                 if (evt.data.foodAdded) {
                   onDataUpdate({ foodAdded: evt.data.foodAdded })
                 } else if (evt.data.foodUpdated) {
