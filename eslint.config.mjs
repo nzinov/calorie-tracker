@@ -10,6 +10,26 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  {
+    ignores: [
+      // Vendored files
+      "node_modules/**",
+      ".next/**",
+      "/out/**",
+      "build/**",
+      ".git/**",
+      "!.*",
+      
+      // Generated files
+      "src/generated/**",
+      "prisma/**",
+      "scripts/**",
+      
+      // Build artifacts
+      "*.tsbuildinfo",
+      "next-env.d.ts"
+    ]
+  },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
