@@ -12,12 +12,33 @@ export type Targets = {
   salt: number
 }
 
+export type NutritionCacheItem = {
+  id: string
+  userId: string
+  key: string
+  name: string
+  portionDescription: string
+  portionSizeGrams: number
+  caloriesPer100g: number
+  proteinPer100g: number
+  carbsPer100g: number
+  fatPer100g: number
+  fiberPer100g: number
+  saltPer100g: number
+  rawJson: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 type Ctx = {
   targets: Targets
+  nutritionCacheItems: NutritionCacheItem[]
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
   saveTargets: (t: Partial<Targets>) => Promise<void>
+  fetchNutritionCache: () => Promise<void>
+  deleteNutritionCacheItem: (id: string) => Promise<void>
 }
 
 const defaultTargets: Targets = { ...DAILY_TARGETS }
@@ -26,6 +47,7 @@ const UserSettingsContext = createContext<Ctx | undefined>(undefined)
 
 export function UserSettingsProvider({ children }: { children: React.ReactNode }) {
   const [targets, setTargets] = useState<Targets>(defaultTargets)
+  const [nutritionCacheItems, setNutritionCacheItems] = useState<NutritionCacheItem[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,8 +66,6 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
     }
   }, [])
 
-  useEffect(() => { refetch() }, [refetch])
-
   const saveTargets = useCallback(async (t: Partial<Targets>) => {
     const res = await fetch("/api/user/settings", {
       method: "PUT",
@@ -57,7 +77,46 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
     setTargets(prev => ({ ...prev, ...t }))
   }, [])
 
-  const value: Ctx = { targets, loading, error, refetch, saveTargets }
+  const fetchNutritionCache = useCallback(async () => {
+    try {
+      const res = await fetch("/api/nutrition-cache")
+      if (!res.ok) throw new Error("Failed to load nutrition cache")
+      const data = await res.json()
+      setNutritionCacheItems(data.items as NutritionCacheItem[])
+    } catch (e: any) {
+      console.error("Failed to fetch nutrition cache:", e)
+    }
+  }, [])
+
+  const deleteNutritionCacheItem = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/nutrition-cache?id=${id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) throw new Error("Failed to delete nutrition cache item")
+      // Remove from local state
+      setNutritionCacheItems(prev => prev.filter(item => item.id !== id))
+    } catch (e: any) {
+      console.error("Failed to delete nutrition cache item:", e)
+      throw e
+    }
+  }, [])
+
+  useEffect(() => { 
+    refetch()
+    fetchNutritionCache()
+  }, [refetch, fetchNutritionCache])
+
+  const value: Ctx = { 
+    targets, 
+    nutritionCacheItems, 
+    loading, 
+    error, 
+    refetch, 
+    saveTargets, 
+    fetchNutritionCache, 
+    deleteNutritionCacheItem 
+  }
   return <UserSettingsContext.Provider value={value}>{children}</UserSettingsContext.Provider>
 }
 

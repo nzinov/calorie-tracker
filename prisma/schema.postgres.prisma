@@ -97,7 +97,6 @@ model FoodEntry {
   fatPer100g Float
   fiberPer100g Float
   saltPer100g Float
-  salt        Float
   timestamp   DateTime @default(now())
   dailyLogId  String
 
