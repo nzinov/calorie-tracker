@@ -18,7 +18,7 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const { name, quantity, calories, protein, carbs, fat, fiber, salt } = body
+    const { name, quantity, portionSizeGrams, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g } = body
 
     // Verify the food entry belongs to the user
     const existingEntry = await db.foodEntry.findFirst({
@@ -43,12 +43,13 @@ export async function PUT(
       data: {
         name: name || existingEntry.name,
         quantity: quantity || existingEntry.quantity,
-        calories: calories !== undefined ? parseFloat(calories) : existingEntry.calories,
-        protein: protein !== undefined ? parseFloat(protein) : existingEntry.protein,
-        carbs: carbs !== undefined ? parseFloat(carbs) : existingEntry.carbs,
-        fat: fat !== undefined ? parseFloat(fat) : existingEntry.fat,
-        fiber: fiber !== undefined ? parseFloat(fiber) : existingEntry.fiber,
-        salt: salt !== undefined ? parseFloat(salt) : existingEntry.salt,
+        portionSizeGrams: portionSizeGrams !== undefined ? parseFloat(portionSizeGrams) : existingEntry.portionSizeGrams,
+        caloriesPer100g: caloriesPer100g !== undefined ? parseFloat(caloriesPer100g) : existingEntry.caloriesPer100g,
+        proteinPer100g: proteinPer100g !== undefined ? parseFloat(proteinPer100g) : existingEntry.proteinPer100g,
+        carbsPer100g: carbsPer100g !== undefined ? parseFloat(carbsPer100g) : existingEntry.carbsPer100g,
+        fatPer100g: fatPer100g !== undefined ? parseFloat(fatPer100g) : existingEntry.fatPer100g,
+        fiberPer100g: fiberPer100g !== undefined ? parseFloat(fiberPer100g) : existingEntry.fiberPer100g,
+        saltPer100g: saltPer100g !== undefined ? parseFloat(saltPer100g) : existingEntry.saltPer100g,
       },
     })
 

@@ -32,11 +32,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, quantity, calories, protein, carbs, fat, fiber, salt, date } = body
+    const { name, quantity, portionSizeGrams, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g, date } = body
 
     // Validate required fields
-    if (!name || !quantity || calories === undefined || protein === undefined || 
-        carbs === undefined || fat === undefined || fiber === undefined || salt === undefined || !date) {
+    if (!name || !quantity || portionSizeGrams === undefined || caloriesPer100g === undefined || 
+        proteinPer100g === undefined || carbsPer100g === undefined || fatPer100g === undefined || 
+        fiberPer100g === undefined || saltPer100g === undefined || !date) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -47,12 +48,13 @@ export async function POST(request: NextRequest) {
     const foodEntry = await addFoodEntry(userId, {
       name,
       quantity,
-      calories: parseFloat(calories),
-      protein: parseFloat(protein),
-      carbs: parseFloat(carbs),
-      fat: parseFloat(fat),
-      fiber: parseFloat(fiber),
-      salt: parseFloat(salt),
+      portionSizeGrams: parseFloat(portionSizeGrams),
+      caloriesPer100g: parseFloat(caloriesPer100g),
+      proteinPer100g: parseFloat(proteinPer100g),
+      carbsPer100g: parseFloat(carbsPer100g),
+      fatPer100g: parseFloat(fatPer100g),
+      fiberPer100g: parseFloat(fiberPer100g),
+      saltPer100g: parseFloat(saltPer100g),
       date,
     })
 

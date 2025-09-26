@@ -90,11 +90,13 @@ model FoodEntry {
   id          String   @id @default(cuid())
   name        String
   quantity    String
-  calories    Float
-  protein     Float
-  carbs       Float
-  fat         Float
-  fiber       Float
+  portionSizeGrams Float
+  caloriesPer100g Float
+  proteinPer100g Float
+  carbsPer100g Float
+  fatPer100g Float
+  fiberPer100g Float
+  saltPer100g Float
   salt        Float
   timestamp   DateTime @default(now())
   dailyLogId  String

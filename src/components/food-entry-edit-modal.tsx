@@ -1,17 +1,18 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 type FoodEntry = {
   id: string
   name: string
   quantity: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
-  salt: number
+  portionSizeGrams: number
+  caloriesPer100g: number
+  proteinPer100g: number
+  carbsPer100g: number
+  fatPer100g: number
+  fiberPer100g: number
+  saltPer100g: number
   timestamp: Date
 }
 
@@ -24,8 +25,6 @@ type FoodEntryEditModalProps = {
 
 export function FoodEntryEditModal({ entry, onUpdate, onDelete, onClose }: FoodEntryEditModalProps) {
   const [form, setForm] = useState<FoodEntry | null>(null)
-  const [scaleProportionally, setScaleProportionally] = useState(false)
-  const [originalForm, setOriginalForm] = useState<FoodEntry | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -33,7 +32,6 @@ export function FoodEntryEditModal({ entry, onUpdate, onDelete, onClose }: FoodE
   useEffect(() => {
     if (entry) {
       setForm(entry)
-      setOriginalForm(entry)
       setError(null)
     }
   }, [entry])
@@ -42,30 +40,6 @@ export function FoodEntryEditModal({ entry, onUpdate, onDelete, onClose }: FoodE
     setForm(prev => {
       if (!prev) return prev
       
-      // If this is a manual edit to any nutrition field besides calories, 
-      // disable proportion scaling for subsequent calorie changes
-      if (scaleProportionally && key !== 'calories' && 
-          ['protein', 'carbs', 'fat', 'fiber', 'salt'].includes(key)) {
-        setScaleProportionally(false)
-      }
-      
-      // If this is a calories update and scale proportionally is checked
-      if (key === 'calories' && scaleProportionally && originalForm && originalForm.calories > 0) {
-        const newValue = typeof value === 'string' ? Number(value) : value
-        if (!isNaN(newValue)) {
-          const ratio = newValue / originalForm.calories
-          
-          return {
-            ...prev,
-            calories: newValue,
-            protein: prev.protein * ratio,
-            carbs: prev.carbs * ratio,
-            fat: prev.fat * ratio,
-            fiber: prev.fiber * ratio,
-            salt: prev.salt * ratio
-          }
-        }
-      }
       
       return { ...prev, [key]: value }
     })
@@ -128,71 +102,71 @@ export function FoodEntryEditModal({ entry, onUpdate, onDelete, onClose }: FoodE
           </label>
 
           <label className="text-sm text-gray-900">
-            <span className="block text-gray-900 mb-1">Calories (kcal)</span>
+            <span className="block text-gray-900 mb-1">Calories per 100g (kcal)</span>
             <input 
               type="number" 
-              value={form.calories}
-              onChange={e => update('calories', Number(e.target.value) || 0)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
-            />
-          </label>
-
-          <label className="col-span-2 flex items-center text-sm text-gray-900">
-            <input
-              type="checkbox"
-              checked={scaleProportionally}
-              onChange={e => setScaleProportionally(e.target.checked)}
-              className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span>Scale nutrition values proportionally to calories (when checking, editing any nutrition value disables this)</span>
-          </label>
-
-          <label className="text-sm text-gray-900">
-            <span className="block text-gray-900 mb-1">Protein (g)</span>
-            <input 
-              type="number" 
-              value={form.protein}
-              onChange={e => update('protein', Number(e.target.value) || 0)}
+              value={form.caloriesPer100g}
+              onChange={e => update('caloriesPer100g', Number(e.target.value) || 0)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
             />
           </label>
 
           <label className="text-sm text-gray-900">
-            <span className="block text-gray-900 mb-1">Carbs (g)</span>
+            <span className="block text-gray-900 mb-1">Protein per 100g (g)</span>
             <input 
               type="number" 
-              value={form.carbs}
-              onChange={e => update('carbs', Number(e.target.value) || 0)}
+              value={form.proteinPer100g}
+              onChange={e => update('proteinPer100g', Number(e.target.value) || 0)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
             />
           </label>
 
           <label className="text-sm text-gray-900">
-            <span className="block text-gray-900 mb-1">Fat (g)</span>
+            <span className="block text-gray-900 mb-1">Carbs per 100g (g)</span>
             <input 
               type="number" 
-              value={form.fat}
-              onChange={e => update('fat', Number(e.target.value) || 0)}
+              value={form.carbsPer100g}
+              onChange={e => update('carbsPer100g', Number(e.target.value) || 0)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
             />
           </label>
 
           <label className="text-sm text-gray-900">
-            <span className="block text-gray-900 mb-1">Fiber (g)</span>
+            <span className="block text-gray-900 mb-1">Fat per 100g (g)</span>
             <input 
               type="number" 
-              value={form.fiber}
-              onChange={e => update('fiber', Number(e.target.value) || 0)}
+              value={form.fatPer100g}
+              onChange={e => update('fatPer100g', Number(e.target.value) || 0)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
             />
           </label>
 
           <label className="text-sm text-gray-900">
-            <span className="block text-gray-900 mb-1">Salt (g)</span>
+            <span className="block text-gray-900 mb-1">Fiber per 100g (g)</span>
             <input 
               type="number" 
-              value={form.salt}
-              onChange={e => update('salt', Number(e.target.value) || 0)}
+              value={form.fiberPer100g}
+              onChange={e => update('fiberPer100g', Number(e.target.value) || 0)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
+            />
+          </label>
+
+          <label className="text-sm text-gray-900">
+            <span className="block text-gray-900 mb-1">Salt per 100g (g)</span>
+            <input 
+              type="number" 
+              value={form.saltPer100g}
+              onChange={e => update('saltPer100g', Number(e.target.value) || 0)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
+            />
+          </label>
+
+          <label className="text-sm text-gray-900">
+            <span className="block text-gray-900 mb-1">Portion Size (g)</span>
+            <input 
+              type="number" 
+              value={form.portionSizeGrams}
+              onChange={e => update('portionSizeGrams', Number(e.target.value) || 0)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" 
             />
           </label>

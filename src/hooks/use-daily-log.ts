@@ -5,12 +5,13 @@ interface FoodEntry {
   id: string
   name: string
   quantity: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
-  salt: number
+  portionSizeGrams: number
+  caloriesPer100g: number
+  proteinPer100g: number
+  carbsPer100g: number
+  fatPer100g: number
+  fiberPer100g: number
+  saltPer100g: number
   timestamp: Date
 }
 
@@ -37,6 +38,19 @@ export function useDailyLog(date: string) {
   const [data, setData] = useState<DailyLogData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Helper function to calculate per-portion values from per100g data
+  function calculatePerPortion(entry: any) {
+    const ratio = entry.portionSizeGrams / 100
+    return {
+      calories: entry.caloriesPer100g * ratio,
+      protein: entry.proteinPer100g * ratio,
+      carbs: entry.carbsPer100g * ratio,
+      fat: entry.fatPer100g * ratio,
+      fiber: entry.fiberPer100g * ratio,
+      salt: entry.saltPer100g * ratio
+    }
+  }
 
   const fetchData = useCallback(async () => {
     // In development, always proceed. In production, wait until authenticated
@@ -106,15 +120,18 @@ export function useDailyLog(date: string) {
         
         const updatedEntries = [...prev.dailyLog.foodEntries, newFoodEntry]
         
-        // Recalculate totals
-        const newTotals = updatedEntries.reduce((totals, entry) => ({
-          calories: totals.calories + entry.calories,
-          protein: totals.protein + entry.protein,
-          carbs: totals.carbs + entry.carbs,
-          fat: totals.fat + entry.fat,
-          fiber: totals.fiber + entry.fiber,
-          salt: totals.salt + entry.salt,
-        }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+        // Recalculate totals by converting per100g to per-portion values
+        const newTotals = updatedEntries.reduce((totals, entry) => {
+          const perPortion = calculatePerPortion(entry)
+          return {
+            calories: totals.calories + perPortion.calories,
+            protein: totals.protein + perPortion.protein,
+            carbs: totals.carbs + perPortion.carbs,
+            fat: totals.fat + perPortion.fat,
+            fiber: totals.fiber + perPortion.fiber,
+            salt: totals.salt + perPortion.salt,
+          }
+        }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
         
         return {
           ...prev,
@@ -156,15 +173,18 @@ export function useDailyLog(date: string) {
             : existingEntry
         )
         
-        // Recalculate totals
-        const newTotals = updatedEntries.reduce((totals, entry) => ({
-          calories: totals.calories + entry.calories,
-          protein: totals.protein + entry.protein,
-          carbs: totals.carbs + entry.carbs,
-          fat: totals.fat + entry.fat,
-          fiber: totals.fiber + entry.fiber,
-          salt: totals.salt + entry.salt,
-        }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+        // Recalculate totals by converting per100g to per-portion values
+        const newTotals = updatedEntries.reduce((totals, entry) => {
+          const perPortion = calculatePerPortion(entry)
+          return {
+            calories: totals.calories + perPortion.calories,
+            protein: totals.protein + perPortion.protein,
+            carbs: totals.carbs + perPortion.carbs,
+            fat: totals.fat + perPortion.fat,
+            fiber: totals.fiber + perPortion.fiber,
+            salt: totals.salt + perPortion.salt,
+          }
+        }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
         
         return {
           ...prev,
@@ -196,15 +216,18 @@ export function useDailyLog(date: string) {
         
         const updatedEntries = prev.dailyLog.foodEntries.filter(entry => entry.id !== id)
         
-        // Recalculate totals
-        const newTotals = updatedEntries.reduce((totals, entry) => ({
-          calories: totals.calories + entry.calories,
-          protein: totals.protein + entry.protein,
-          carbs: totals.carbs + entry.carbs,
-          fat: totals.fat + entry.fat,
-          fiber: totals.fiber + entry.fiber,
-          salt: totals.salt + entry.salt,
-        }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+        // Recalculate totals by converting per100g to per-portion values
+        const newTotals = updatedEntries.reduce((totals, entry) => {
+          const perPortion = calculatePerPortion(entry)
+          return {
+            calories: totals.calories + perPortion.calories,
+            protein: totals.protein + perPortion.protein,
+            carbs: totals.carbs + perPortion.carbs,
+            fat: totals.fat + perPortion.fat,
+            fiber: totals.fiber + perPortion.fiber,
+            salt: totals.salt + perPortion.salt,
+          }
+        }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
         
         return {
           ...prev,
@@ -248,14 +271,18 @@ export function useDailyLog(date: string) {
         return prev
       }
 
-      const newTotals = updatedEntries.reduce((totals, entry) => ({
-        calories: totals.calories + entry.calories,
-        protein: totals.protein + entry.protein,
-        carbs: totals.carbs + entry.carbs,
-        fat: totals.fat + entry.fat,
-        fiber: totals.fiber + entry.fiber,
-        salt: totals.salt + entry.salt,
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+      // Recalculate totals by converting per100g to per-portion values
+      const newTotals = updatedEntries.reduce((totals, entry) => {
+        const perPortion = calculatePerPortion(entry)
+        return {
+          calories: totals.calories + perPortion.calories,
+          protein: totals.protein + perPortion.protein,
+          carbs: totals.carbs + perPortion.carbs,
+          fat: totals.fat + perPortion.fat,
+          fiber: totals.fiber + perPortion.fiber,
+          salt: totals.salt + perPortion.salt,
+        }
+      }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
 
       return {
         ...prev,

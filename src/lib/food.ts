@@ -15,41 +15,69 @@ export async function ensureDailyLog(userId: string, date: Date) {
 export async function addFoodEntry(userId: string, args: {
   name: string
   quantity: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
-  salt: number
+  portionSizeGrams: number
+  caloriesPer100g: number
+  proteinPer100g: number
+  carbsPer100g: number
+  fatPer100g: number
+  fiberPer100g: number
+  saltPer100g: number
+  cache?: boolean
   date: string | Date
 }) {
   const date = new Date(args.date)
   date.setHours(0, 0, 0, 0)
   const dailyLog = await ensureDailyLog(userId, date)
-  return db.foodEntry.create({
+  const foodEntry = await db.foodEntry.create({
     data: {
       name: args.name,
       quantity: args.quantity,
-      calories: Number(args.calories),
-      protein: Number(args.protein),
-      carbs: Number(args.carbs),
-      fat: Number(args.fat),
-      fiber: Number(args.fiber),
-      salt: Number(args.salt),
+      portionSizeGrams: Number(args.portionSizeGrams),
+      caloriesPer100g: Number(args.caloriesPer100g),
+      proteinPer100g: Number(args.proteinPer100g),
+      carbsPer100g: Number(args.carbsPer100g),
+      fatPer100g: Number(args.fatPer100g),
+      fiberPer100g: Number(args.fiberPer100g),
+      saltPer100g: Number(args.saltPer100g),
       dailyLogId: dailyLog.id,
     },
   })
+
+  // Save to cache if cache parameter is true or not provided (for backward compatibility)
+  if (args.cache !== false) {
+    const cacheInfo = {
+      name: args.name,
+      portionDescription: args.quantity || '1 serving',
+      portionSizeGrams: Number(args.portionSizeGrams),
+      per100g: {
+        calories: Number(args.caloriesPer100g),
+        protein: Number(args.proteinPer100g),
+        carbs: Number(args.carbsPer100g),
+        fat: Number(args.fatPer100g),
+        fiber: Number(args.fiberPer100g),
+        salt: Number(args.saltPer100g)
+      }
+    }
+    try {
+      await saveNutritionCacheItem(userId, args.name, cacheInfo)
+    } catch (error) {
+      console.error('Failed to save food entry to cache:', error)
+    }
+  }
+
+  return foodEntry
 }
 
 export async function editFoodEntry(userId: string, id: string, args: Partial<{
   name: string
   quantity: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
-  salt: number
+  portionSizeGrams: number
+  caloriesPer100g: number
+  proteinPer100g: number
+  carbsPer100g: number
+  fatPer100g: number
+  fiberPer100g: number
+  saltPer100g: number
 }>) {
   // Verify the entry belongs to user's daily log
   const entry = await db.foodEntry.findFirst({
@@ -68,12 +96,13 @@ export async function editFoodEntry(userId: string, id: string, args: Partial<{
     data: {
       ...(args.name !== undefined ? { name: args.name } : {}),
       ...(args.quantity !== undefined ? { quantity: args.quantity } : {}),
-      ...(args.calories !== undefined ? { calories: Number(args.calories) } : {}),
-      ...(args.protein !== undefined ? { protein: Number(args.protein) } : {}),
-      ...(args.carbs !== undefined ? { carbs: Number(args.carbs) } : {}),
-      ...(args.fat !== undefined ? { fat: Number(args.fat) } : {}),
-      ...(args.fiber !== undefined ? { fiber: Number(args.fiber) } : {}),
-      ...(args.salt !== undefined ? { salt: Number(args.salt) } : {}),
+      ...(args.portionSizeGrams !== undefined ? { portionSizeGrams: Number(args.portionSizeGrams) } : {}),
+      ...(args.caloriesPer100g !== undefined ? { caloriesPer100g: Number(args.caloriesPer100g) } : {}),
+      ...(args.proteinPer100g !== undefined ? { proteinPer100g: Number(args.proteinPer100g) } : {}),
+      ...(args.carbsPer100g !== undefined ? { carbsPer100g: Number(args.carbsPer100g) } : {}),
+      ...(args.fatPer100g !== undefined ? { fatPer100g: Number(args.fatPer100g) } : {}),
+      ...(args.fiberPer100g !== undefined ? { fiberPer100g: Number(args.fiberPer100g) } : {}),
+      ...(args.saltPer100g !== undefined ? { saltPer100g: Number(args.saltPer100g) } : {}),
     },
   })
 }
@@ -111,16 +140,19 @@ export async function getCurrentNutritionalData(userId: string, date: Date) {
     },
   })
 
-  // Calculate totals
+  // Calculate totals by converting per100g to per-portion values
   const totals = dailyLog.foodEntries.reduce(
-    (acc, entry) => ({
-      calories: acc.calories + entry.calories,
-      protein: acc.protein + entry.protein,
-      carbs: acc.carbs + entry.carbs,
-      fat: acc.fat + entry.fat,
-      fiber: acc.fiber + entry.fiber,
-      salt: acc.salt + entry.salt,
-    }),
+    (acc, entry) => {
+      const ratio = entry.portionSizeGrams / 100
+      return {
+        calories: acc.calories + (entry.caloriesPer100g * ratio),
+        protein: acc.protein + (entry.proteinPer100g * ratio),
+        carbs: acc.carbs + (entry.carbsPer100g * ratio),
+        fat: acc.fat + (entry.fatPer100g * ratio),
+        fiber: acc.fiber + (entry.fiberPer100g * ratio),
+        salt: acc.salt + (entry.saltPer100g * ratio),
+      }
+    },
     { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
   )
 

@@ -6,12 +6,13 @@ interface FoodEntry {
   id: string
   name: string
   quantity: string
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
-  salt: number
+  portionSizeGrams: number
+  caloriesPer100g: number
+  proteinPer100g: number
+  carbsPer100g: number
+  fatPer100g: number
+  fiberPer100g: number
+  saltPer100g: number
   timestamp: Date
 }
 
@@ -75,6 +76,15 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
             <tbody>
               {entries.map((entry) => {
                 const isDeleting = deletingIds.has(entry.id)
+                const ratio = entry.portionSizeGrams / 100
+                const perPortion = {
+                  calories: entry.caloriesPer100g * ratio,
+                  protein: entry.proteinPer100g * ratio,
+                  carbs: entry.carbsPer100g * ratio,
+                  fat: entry.fatPer100g * ratio,
+                  fiber: entry.fiberPer100g * ratio,
+                  salt: entry.saltPer100g * ratio
+                }
                 return (
                   <tr key={entry.id} className={`border-b border-gray-200 hover:bg-gray-50 transition-opacity ${isDeleting ? 'opacity-50' : ''}`}>
                     <td className="py-1.5 px-2 md:px-3 text-gray-800 text-xs">
@@ -82,12 +92,12 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                     </td>
                     <td className="py-1.5 px-2 md:px-3 font-medium text-gray-900 text-xs">{entry.name}</td>
                     <td className="py-1.5 px-2 md:px-3 text-gray-800 text-xs">{entry.quantity}</td>
-                    <td className="py-1.5 px-2 md:px-3 text-right font-medium text-gray-900 text-xs">{entry.calories.toFixed(0)}</td>
-                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs whitespace-nowrap"><span>{(entry.calories < entry.protein * 10 ? '💪' : '')}<span style={{transform: 'scale(1.2)'}}>{entry.protein.toFixed(1)}</span>g</span></td>
-                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.carbs.toFixed(1)}g</td>
-                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fat.toFixed(1)}g</td>
-                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.fiber.toFixed(1)}g</td>
-                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{entry.salt.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right font-medium text-gray-900 text-xs">{perPortion.calories.toFixed(0)}</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs whitespace-nowrap"><span>{(perPortion.calories < perPortion.protein * 10 ? '💪' : '')}<span style={{transform: 'scale(1.2)'}}>{perPortion.protein.toFixed(1)}</span>g</span></td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{perPortion.carbs.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{perPortion.fat.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{perPortion.fiber.toFixed(1)}g</td>
+                    <td className="py-1.5 px-2 md:px-3 text-right text-gray-800 text-xs">{perPortion.salt.toFixed(1)}g</td>
                     <td className="py-1.5 px-2 md:px-3 text-center">
                       <div className="flex justify-center space-x-2">
                         {onEdit && (

@@ -37,7 +37,6 @@ IMPORTANT: Always try to estimate calories and nutritional values when users des
 
 Be reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging. Do not ask for confirmations of your actions unless absolutely necessary. Always look for the fuzzy match of the food in \"Known nutrition cache entries\" list below and take information from there if present. If food is not present in the cache and you need iformation from the web to estimate its nutritional values (e.g. it's some specific brand), use the lookup_nutritional_info tool to get accurate data from web sources before logging the entry.
 
-LOOKUP TOOL RETURN FORMAT: The lookup_nutritional_info tool returns the usual portion description and size in grams, plus nutritional values per 100g. When you receive this data, compute the calories and macros for the user's consumed amount (use their stated amount; if not provided, use the usual portion grams). Then call add_food_entry with the computed totals for the consumed quantity and a clear metric quantity string.
 
 METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible. Convert imperial measurements to metric equivalents:
 - \"1 cup\" → \"240ml\" or \"240g\" (depending on food type)
@@ -48,6 +47,8 @@ Use descriptive quantities plus grams like \"1 medium (150g)\" for apples or \"1
 
 IMPORTANT: DO NOT repeat nutritional information of the food after you add it and DO NOT mention total macros of the day unless user explicitly asks you. User can see them in the UI.
 REMINDER: DO NOT call lookup_nutritional_info tool if you can find the food in the cache.
+
+CACHE PARAMETER INSTRUCTIONS: When using the add_food_entry tool, set the cache parameter to true to save this food entry to the nutrition cache if there is no similar food there yet. Save all new foods, but avoid duplicated similar entries.
 
 `
 }
@@ -201,8 +202,8 @@ export async function POST(request: NextRequest) {
       await createChatEvent(chatSessionId, 'message', { type: 'message', message: { id: savedUserMessage?.id, role: 'user', content: uiContent, toolCalls: null, toolCallId: null } })
 
       const tools = [
-        { type: 'function', function: { name: 'add_food_entry', description: 'Add a new food entry to today\'s log', parameters: { type: 'object', properties: { name: { type: 'string' }, quantity: { type: 'string' }, calories: { type: 'number' }, protein: { type: 'number' }, carbs: { type: 'number' }, fat: { type: 'number' }, fiber: { type: 'number' }, salt: { type: 'number' } }, required: ['name','quantity','calories','protein','carbs','fat','fiber','salt'] } } },
-        { type: 'function', function: { name: 'edit_food_entry', description: 'Edit an existing food entry', parameters: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, quantity: { type: 'string' }, calories: { type: 'number' }, protein: { type: 'number' }, carbs: { type: 'number' }, fat: { type: 'number' }, fiber: { type: 'number' }, salt: { type: 'number' } }, required: ['id'] } } },
+        { type: 'function', function: { name: 'add_food_entry', description: 'Add a new food entry to today\'s log', parameters: { type: 'object', properties: { name: { type: 'string' }, quantity: { type: 'string' }, portionSizeGrams: { type: 'number' }, caloriesPer100g: { type: 'number' }, proteinPer100g: { type: 'number' }, carbsPer100g: { type: 'number' }, fatPer100g: { type: 'number' }, fiberPer100g: { type: 'number' }, saltPer100g: { type: 'number' }, cache: { type: 'boolean' } }, required: ['cache', 'name','quantity','portionSizeGrams','caloriesPer100g','proteinPer100g','carbsPer100g','fatPer100g','fiberPer100g','saltPer100g'] } } },
+        { type: 'function', function: { name: 'edit_food_entry', description: 'Edit an existing food entry', parameters: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, quantity: { type: 'string' }, portionSizeGrams: { type: 'number' }, caloriesPer100g: { type: 'number' }, proteinPer100g: { type: 'number' }, carbsPer100g: { type: 'number' }, fatPer100g: { type: 'number' }, fiberPer100g: { type: 'number' }, saltPer100g: { type: 'number' } }, required: ['id'] } } },
         { type: 'function', function: { name: 'delete_food_entry', description: 'Delete a food entry from today\'s log', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } },
         { type: 'function', function: { name: 'lookup_nutritional_info', description: 'Look up nutritional information using web search', parameters: { type: 'object', properties: { foodDescription: { type: 'string' } }, required: ['foodDescription'] } } },
       ]
@@ -299,9 +300,18 @@ export async function POST(request: NextRequest) {
             
             let entriesStr = '';
             if (updatedFoodEntries.length > 0) {
-              entriesStr = `Current food entries table:\n` + updatedFoodEntries.map((entry: any, index: number) => 
-                `${index + 1}. ${entry.name} (${entry.quantity}) - ID: ${entry.id}\n   Macros: ${entry.calories} kcal, ${entry.protein}g protein, ${entry.carbs}g carbs, ${entry.fat}g fat, ${entry.fiber}g fiber, ${entry.salt}g salt`
-              ).join('\n');
+              entriesStr = `Current food entries table:\n` + updatedFoodEntries.map((entry: any, index: number) => {
+                const ratio = entry.portionSizeGrams / 100
+                const perPortion = {
+                  calories: entry.caloriesPer100g * ratio,
+                  protein: entry.proteinPer100g * ratio,
+                  carbs: entry.carbsPer100g * ratio,
+                  fat: entry.fatPer100g * ratio,
+                  fiber: entry.fiberPer100g * ratio,
+                  salt: entry.saltPer100g * ratio
+                }
+                return `${index + 1}. ${entry.name} (${entry.quantity}) - ID: ${entry.id}\n   Macros: ${perPortion.calories.toFixed(0)} kcal, ${perPortion.protein.toFixed(1)}g protein, ${perPortion.carbs.toFixed(1)}g carbs, ${perPortion.fat.toFixed(1)}g fat, ${perPortion.fiber.toFixed(1)}g fiber, ${perPortion.salt.toFixed(1)}g salt`
+              }).join('\n');
             }
             
             return { totalsStr, entriesStr };
@@ -316,7 +326,8 @@ export async function POST(request: NextRequest) {
             switch (name) {
               case 'add_food_entry': {
                 const entry = await addFoodEntry(userId, { ...parsedArgs, date });
-                const message = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${parsedArgs.calories} calories to your food log.`;
+                const calories = Math.round((parsedArgs.caloriesPer100g * parsedArgs.portionSizeGrams) / 100);
+                const message = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${calories} calories to your food log.`;
                 toolResult = await formatFoodOperationResult(message);
                 result.foodAdded = entry;
                 break;

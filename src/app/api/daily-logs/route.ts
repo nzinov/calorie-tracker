@@ -3,6 +3,22 @@ import { db } from "@/lib/db"
 import { getServerSession } from "next-auth/next"
 import { NextRequest, NextResponse } from "next/server"
 
+// Helper function to calculate per-portion values from per100g data
+function calculatePerPortion(entry: any) {
+  if (!entry.portionSizeGrams) return entry
+  
+  const ratio = entry.portionSizeGrams / 100
+  return {
+    ...entry,
+    calories: entry.caloriesPer100g * ratio,
+    protein: entry.proteinPer100g * ratio,
+    carbs: entry.carbsPer100g * ratio,
+    fat: entry.fatPer100g * ratio,
+    fiber: entry.fiberPer100g * ratio,
+    salt: entry.saltPer100g * ratio
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -54,16 +70,19 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Calculate totals
+    // Calculate totals by converting per100g to per-portion values
     const totals = dailyLog.foodEntries.reduce(
-      (acc, entry) => ({
-        calories: acc.calories + entry.calories,
-        protein: acc.protein + entry.protein,
-        carbs: acc.carbs + entry.carbs,
-        fat: acc.fat + entry.fat,
-        fiber: acc.fiber + entry.fiber,
-        salt: acc.salt + entry.salt,
-      }),
+      (acc, entry) => {
+        const perPortion = calculatePerPortion(entry)
+        return {
+          calories: acc.calories + perPortion.calories,
+          protein: acc.protein + perPortion.protein,
+          carbs: acc.carbs + perPortion.carbs,
+          fat: acc.fat + perPortion.fat,
+          fiber: acc.fiber + perPortion.fiber,
+          salt: acc.salt + perPortion.salt,
+        }
+      },
       { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
     )
     console.log('dailyLog', date, userId, totals)
