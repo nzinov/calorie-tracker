@@ -52,7 +52,7 @@ export function NutritionCacheTable({ items, onDelete }: NutritionCacheTableProp
           <p>No cached food items yet.</p>
         </div>
       ) : (
-        <div className="overflow-auto">
+        <div className="overflow-auto max-h-96">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 bg-gray-100 border-b border-gray-300">
               <tr>
