@@ -26,13 +26,11 @@ export async function POST(
     const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
     const { id } = await params
 
-    // Verify the chat session belongs to the user (through daily log)
+    // Verify the chat session belongs to the user
     const chatSession = await prisma.chatSession.findFirst({
       where: {
         id,
-        dailyLog: {
-          userId
-        }
+        userId
       }
     })
 

@@ -6,7 +6,7 @@ import { db as prisma } from "@/lib/db"
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (process.env.NODE_ENV !== 'development' && !(session as any)?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -15,52 +15,39 @@ export async function GET(request: NextRequest) {
 
     // Ensure dev user exists in development mode
     if (process.env.NODE_ENV === 'development') {
-      const existingUser = await prisma.user.findUnique({
-        where: { id: 'dev-user' }
+      await prisma.user.upsert({
+        where: { id: userId },
+        update: {},
+        create: { id: userId, email: 'dev@localhost' }
       })
-      
-      if (!existingUser) {
-        await prisma.user.create({
-          data: {
-            id: 'dev-user',
-            email: 'dev@example.com',
-            name: 'Dev User'
-          }
-        })
-      }
     }
+
     const { searchParams } = new URL(request.url)
     const dateParam = searchParams.get("date")
     const date = dateParam ? new Date(dateParam) : new Date()
-    
+
     // Set to start of day
     date.setHours(0, 0, 0, 0)
 
-    // Create or fetch daily log atomically to avoid unique violations
-    const dailyLog = await prisma.dailyLog.upsert({
-      where: { userId_date: { userId, date } },
-      update: {},
-      create: { userId, date },
+    // Get chat sessions for this user and date
+    const chatSessions = await prisma.chatSession.findMany({
+      where: { userId, date },
       include: {
-        chatSessions: {
-          include: {
-            messages: { 
-              orderBy: { timestamp: 'asc' },
-              select: {
-                id: true,
-                role: true,
-                content: true,
-                timestamp: true,
-                toolCalls: true,
-                toolCallId: true
-              }
-            }
+        messages: {
+          orderBy: { timestamp: 'asc' },
+          select: {
+            id: true,
+            role: true,
+            content: true,
+            timestamp: true,
+            toolCalls: true,
+            toolCallId: true
           }
         }
       }
     })
 
-    return NextResponse.json(dailyLog.chatSessions)
+    return NextResponse.json(chatSessions)
   } catch (error) {
     console.error("Error fetching chat sessions:", error)
     return NextResponse.json(
@@ -73,7 +60,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (process.env.NODE_ENV !== 'development' && !(session as any)?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -82,39 +69,26 @@ export async function POST(request: NextRequest) {
 
     // Ensure dev user exists in development mode
     if (process.env.NODE_ENV === 'development') {
-      const existingUser = await prisma.user.findUnique({
-        where: { id: 'dev-user' }
+      await prisma.user.upsert({
+        where: { id: userId },
+        update: {},
+        create: { id: userId, email: 'dev@localhost' }
       })
-      
-      if (!existingUser) {
-        await prisma.user.create({
-          data: {
-            id: 'dev-user',
-            email: 'dev@example.com',
-            name: 'Dev User'
-          }
-        })
-      }
     }
+
     const { date: dateParam } = await request.json()
     const date = dateParam ? new Date(dateParam) : new Date()
-    
+
     // Set to start of day
     date.setHours(0, 0, 0, 0)
 
-    // Create or fetch daily log atomically to avoid unique violations
-    const dailyLog = await prisma.dailyLog.upsert({
-      where: { userId_date: { userId, date } },
-      update: {},
-      create: { userId, date }
-    })
-
     // Create or fetch chat session atomically to avoid unique violations
     const chatSession = await prisma.chatSession.upsert({
-      where: { dailyLogId: dailyLog.id },
+      where: { userId_date: { userId, date } },
       update: {},
       create: {
-        dailyLogId: dailyLog.id,
+        userId,
+        date,
         messages: {
           create: {
             role: "assistant",
@@ -123,7 +97,7 @@ export async function POST(request: NextRequest) {
         }
       },
       include: {
-        messages: { 
+        messages: {
           orderBy: { timestamp: 'asc' },
           select: {
             id: true,

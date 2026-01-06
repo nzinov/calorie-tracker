@@ -1,61 +1,65 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
-import { addFoodEntry } from "@/lib/food"
 import { db } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
-    
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Ensure dev user exists in development mode
     if (process.env.NODE_ENV === 'development') {
-      const existingUser = await db.user.findUnique({
-        where: { id: 'dev-user' }
+      await db.user.upsert({
+        where: { id: userId },
+        update: {},
+        create: { id: userId, email: 'dev@localhost' }
       })
-      
-      if (!existingUser) {
-        await db.user.create({
-          data: {
-            id: 'dev-user',
-            email: 'dev@example.com',
-            name: 'Dev User'
-          }
-        })
-      }
     }
 
     const body = await request.json()
-    const { name, quantity, portionSizeGrams, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g, date } = body
+    const { userFoodId, grams, date } = body
 
     // Validate required fields
-    if (!name || !quantity || portionSizeGrams === undefined || caloriesPer100g === undefined || 
-        proteinPer100g === undefined || carbsPer100g === undefined || fatPer100g === undefined || 
-        fiberPer100g === undefined || saltPer100g === undefined || !date) {
+    if (!userFoodId || grams === undefined || !date) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing required fields: userFoodId, grams, date" },
         { status: 400 }
       )
     }
 
-    // Use the library function
-    const foodEntry = await addFoodEntry(userId, {
-      name,
-      quantity,
-      portionSizeGrams: parseFloat(portionSizeGrams),
-      caloriesPer100g: parseFloat(caloriesPer100g),
-      proteinPer100g: parseFloat(proteinPer100g),
-      carbsPer100g: parseFloat(carbsPer100g),
-      fatPer100g: parseFloat(fatPer100g),
-      fiberPer100g: parseFloat(fiberPer100g),
-      saltPer100g: parseFloat(saltPer100g),
-      date,
+    // Verify the userFood belongs to this user
+    const userFood = await db.userFood.findFirst({
+      where: { id: userFoodId, userId }
+    })
+
+    if (!userFood) {
+      return NextResponse.json(
+        { error: "Food not found in your database" },
+        { status: 404 }
+      )
+    }
+
+    // Parse date to start of day
+    const entryDate = new Date(date)
+    entryDate.setHours(0, 0, 0, 0)
+
+    // Create the food entry
+    const foodEntry = await db.foodEntry.create({
+      data: {
+        userId,
+        userFoodId,
+        grams: Number(grams),
+        date: entryDate
+      },
+      include: {
+        userFood: true
+      }
     })
 
     return NextResponse.json(foodEntry, { status: 201 })

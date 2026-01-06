@@ -14,6 +14,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
     "@prisma/client": "^6.15.0",
+    "fuse.js": "^7.1.0",
     "next": "15.5.2",
     "next-auth": "^4.24.11",
     "prisma": "^6.15.0",

@@ -2,7 +2,7 @@ import { authOptions } from "@/lib/auth"
 import { DAILY_TARGETS } from "@/lib/constants"
 import { db as prisma } from "@/lib/db"
 import { createChatEvent } from "@/lib/events"
-import { addFoodEntry, deleteFoodEntry, editFoodEntry, getCurrentNutritionalData, getNutritionCacheItems, lookupNutritionalInfo, saveNutritionCacheItem } from "@/lib/food"
+import { lookupNutritionalInfo } from "@/lib/food"
 import { readFileSync } from "fs"
 import { getServerSession } from "next-auth/next"
 import { NextRequest, NextResponse } from "next/server"
@@ -29,26 +29,35 @@ Daily targets:
 - Fiber: ${userTargets.fiber}g
 - Salt: ${userTargets.salt}g
 
+## How Food Logging Works
+
+The user has a personal FOOD DATABASE containing foods they've logged before. Each food in the database has:
+- An ID (use this to reference the food)
+- Name
+- Nutritional values per 100g
+- Optional default portion size in grams
+- Optional comments (portion info, notes, etc.) Do not add obvious comments, only use them if necessary
+
+When logging food:
+1. First check if the food exists in the user's database (shown below)
+2. If it exists, use add_food_entry with the food's ID and the amount in grams
+3. If it doesn't exist, first use create_food to add it to the database, then use add_food_entry with the new food's ID
+
 IMPORTANT: Always try to estimate calories and nutritional values when users describe food, even if they don't provide exact measurements. Use your knowledge of typical serving sizes and nutritional content. For example:
-- \"I had pizza\" → estimate for 2-3 slices of typical pizza
-- \"add some cookies\" → estimate for 2-3 average cookies
-- \"had a sandwich\" → estimate based on typical sandwich ingredients
+- "I had pizza" → estimate for 2-3 slices of typical pizza
+- "add some cookies" → estimate for 2-3 average cookies
+- "had a sandwich" → estimate based on typical sandwich ingredients
 - When given photos, analyze all visible food items and estimate portions
 
-Be reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging. Do not ask for confirmations of your actions unless absolutely necessary. Always look for the fuzzy match of the food in \"Known nutrition cache entries\" list below and take information from there if present. If food is not present in the cache and you need iformation from the web to estimate its nutritional values (e.g. it's some specific brand), use the lookup_nutritional_info tool to get accurate data from web sources before logging the entry.
+Be reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging. Do not ask for confirmations of your actions unless absolutely necessary.
 
+If a food is not in the database and you need information from the web to estimate its nutritional values (e.g. it's some specific brand), use the lookup_nutritional_info tool to get accurate data from web sources before creating the food.
 
-METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible. Convert imperial measurements to metric equivalents:
-- \"1 cup\" → \"240ml\" or \"240g\" (depending on food type)
-- \"1 slice\" → \"80g\" (for bread/pizza)
-- \"1 tbsp\" → \"15ml\" or \"15g\"
-- \"1 oz\" → \"28g\"
-Use descriptive quantities plus grams like \"1 medium (150g)\" for apples or \"1 slice (120g)\" for pizza. 
+METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible.
 
 IMPORTANT: DO NOT repeat nutritional information of the food after you add it and DO NOT mention total macros of the day unless user explicitly asks you. User can see them in the UI.
-REMINDER: DO NOT call lookup_nutritional_info tool if you can find the food in the cache.
 
-CACHE PARAMETER INSTRUCTIONS: When using the add_food_entry tool, set the cache parameter to true to save this food entry to the nutrition cache if there is no similar food there yet. Save all new foods, but avoid duplicated similar entries.
+If the user asks you what to eat, go off remaining nnutritional targets for the day and healthy eating guidelines.
 
 `
 }
@@ -93,8 +102,6 @@ function extractProviderError(body: any): string | null {
   }
 }
 
-// No image decoding needed; we pass data URLs via image_url { url }
-
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -131,15 +138,23 @@ export async function POST(request: NextRequest) {
 
       const targetDate = new Date(date)
       const dateStr = date  // Keep the original date string for comparison
-      const cacheItems = await getNutritionCacheItems(userId, 30)
 
-      // Build system + context message (without current totals and food entries)
-      const systemContent = buildSystemPrompt(userTargets) + (cacheItems && cacheItems.length > 0
-        ? ("\n\n## Known nutrition cache entries (per 100g):\n" + cacheItems.map((c: any, i: number) => {
-            const p = `cal ${Math.round(c.caloriesPer100g)} kcal, prot ${Number(c.proteinPer100g).toFixed(1)}g, carbs ${Number(c.carbsPer100g).toFixed(1)}g, fat ${Number(c.fatPer100g).toFixed(1)}g, fiber ${Number(c.fiberPer100g).toFixed(1)}g, salt ${Number(c.saltPer100g).toFixed(2)}g`
-            const portion = `${Math.round(c.portionSizeGrams)}g (${c.portionDescription})`
-            return `${i + 1}. ${c.name} — usual portion ${portion}; per100g: ${p}`
-          }).join('\n')) : '')
+      // Get user's food database instead of cache
+      const userFoods = await prisma.userFood.findMany({
+        where: { userId },
+        orderBy: { updatedAt: 'desc' },
+        take: 50
+      })
+
+      // Build system + context message with food database
+      const systemContent = buildSystemPrompt(userTargets) + (userFoods && userFoods.length > 0
+        ? ("\n\n## User's Food Database (reference by ID when adding entries):\n" + userFoods.map((f: any, i: number) => {
+            const macros = `cal ${Math.round(f.caloriesPer100g)}, prot ${Number(f.proteinPer100g).toFixed(1)}g, carbs ${Number(f.carbsPer100g).toFixed(1)}g, fat ${Number(f.fatPer100g).toFixed(1)}g, fiber ${Number(f.fiberPer100g).toFixed(1)}g, salt ${Number(f.saltPer100g).toFixed(2)}g`
+            const defaultPortion = f.defaultGrams ? ` (default: ${Math.round(f.defaultGrams)}g)` : ''
+            const comments = f.comments ? ` — ${f.comments}` : ''
+            return `${i + 1}. [ID: ${f.id}] ${f.name}${defaultPortion} — per 100g: ${macros}${comments}`
+          }).join('\n'))
+        : '\n\n## User\'s Food Database is empty. Use create_food to add new foods before logging entries.')
 
       // Prepare first AI request (mirror original stream route behavior)
       const fallbackText = "Please analyze the attached photo and extract foods and nutrition."
@@ -150,7 +165,7 @@ export async function POST(request: NextRequest) {
 
       // Include prior chat history for this session
       const chatSession = await prisma.chatSession.findFirst({
-        where: { id: chatSessionId, dailyLog: { userId } },
+        where: { id: chatSessionId, userId },
         include: {
           messages: {
             orderBy: { timestamp: 'asc' },
@@ -187,7 +202,6 @@ export async function POST(request: NextRequest) {
       }
 
       // Build user message content with OpenRouter content-part schema
-      // Use text + image_url with nested { url: data_url }
       let userMessageContent: any = userText
       if (hasImage && typeof imageDataUrl === 'string') {
         userMessageContent = [
@@ -197,15 +211,126 @@ export async function POST(request: NextRequest) {
       }
       builtMessages.push({ role: 'user', content: userMessageContent } as any)
 
-      // Persist user message and emit event (after building messages to avoid duplicating it in history)
+      // Persist user message and emit event
       const savedUserMessage = await saveMessageToDb(chatSessionId, 'user', uiContent, null, null)
       await createChatEvent(chatSessionId, 'message', { type: 'message', message: { id: savedUserMessage?.id, role: 'user', content: uiContent, toolCalls: null, toolCallId: null } })
 
       const tools = [
-        { type: 'function', function: { name: 'add_food_entry', description: 'Add a new food entry to today\'s log', parameters: { type: 'object', properties: { name: { type: 'string' }, quantity: { type: 'string' }, portionSizeGrams: { type: 'number' }, caloriesPer100g: { type: 'number' }, proteinPer100g: { type: 'number' }, carbsPer100g: { type: 'number' }, fatPer100g: { type: 'number' }, fiberPer100g: { type: 'number' }, saltPer100g: { type: 'number' }, cache: { type: 'boolean' } }, required: ['cache', 'name','quantity','portionSizeGrams','caloriesPer100g','proteinPer100g','carbsPer100g','fatPer100g','fiberPer100g','saltPer100g'] } } },
-        { type: 'function', function: { name: 'edit_food_entry', description: 'Edit an existing food entry', parameters: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, quantity: { type: 'string' }, portionSizeGrams: { type: 'number' }, caloriesPer100g: { type: 'number' }, proteinPer100g: { type: 'number' }, carbsPer100g: { type: 'number' }, fatPer100g: { type: 'number' }, fiberPer100g: { type: 'number' }, saltPer100g: { type: 'number' } }, required: ['id'] } } },
-        { type: 'function', function: { name: 'delete_food_entry', description: 'Delete a food entry from today\'s log', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } },
-        { type: 'function', function: { name: 'lookup_nutritional_info', description: 'Look up nutritional information using web search', parameters: { type: 'object', properties: { foodDescription: { type: 'string' } }, required: ['foodDescription'] } } },
+        // Create a new food in user's database
+        {
+          type: 'function',
+          function: {
+            name: 'create_food',
+            description: 'Add a new food to the user\'s food database. Use this when the food doesn\'t exist in the database yet.',
+            parameters: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Name of the food' },
+                caloriesPer100g: { type: 'number', description: 'Calories per 100g' },
+                proteinPer100g: { type: 'number', description: 'Protein in grams per 100g' },
+                carbsPer100g: { type: 'number', description: 'Carbohydrates in grams per 100g' },
+                fatPer100g: { type: 'number', description: 'Fat in grams per 100g' },
+                fiberPer100g: { type: 'number', description: 'Fiber in grams per 100g' },
+                saltPer100g: { type: 'number', description: 'Salt in grams per 100g' },
+                defaultGrams: { type: 'number', description: 'Default portion size in grams (optional)' },
+                comments: { type: 'string', description: 'Additional notes like portion descriptions, brand info, etc. (optional)' }
+              },
+              required: ['name', 'caloriesPer100g', 'proteinPer100g', 'carbsPer100g', 'fatPer100g', 'fiberPer100g', 'saltPer100g']
+            }
+          }
+        },
+        // Update an existing food in user's database
+        {
+          type: 'function',
+          function: {
+            name: 'update_food',
+            description: 'Update an existing food in the user\'s food database. Use the food ID from the database.',
+            parameters: {
+              type: 'object',
+              properties: {
+                foodId: { type: 'string', description: 'The ID of the food to update' },
+                name: { type: 'string', description: 'New name (optional)' },
+                caloriesPer100g: { type: 'number', description: 'Calories per 100g (optional)' },
+                proteinPer100g: { type: 'number', description: 'Protein in grams per 100g (optional)' },
+                carbsPer100g: { type: 'number', description: 'Carbohydrates in grams per 100g (optional)' },
+                fatPer100g: { type: 'number', description: 'Fat in grams per 100g (optional)' },
+                fiberPer100g: { type: 'number', description: 'Fiber in grams per 100g (optional)' },
+                saltPer100g: { type: 'number', description: 'Salt in grams per 100g (optional)' },
+                defaultGrams: { type: 'number', description: 'Default portion size in grams (optional)' },
+                comments: { type: 'string', description: 'Additional notes (optional)' }
+              },
+              required: ['foodId']
+            }
+          }
+        },
+        // Add a food entry to daily log
+        {
+          type: 'function',
+          function: {
+            name: 'add_food_entry',
+            description: 'Add a food entry to the user\'s daily log. The food must already exist in the database - use its ID.',
+            parameters: {
+              type: 'object',
+              properties: {
+                userFoodId: { type: 'string', description: 'The ID of the food from the user\'s database' },
+                grams: { type: 'number', description: 'Amount consumed in grams' }
+              },
+              required: ['userFoodId', 'grams']
+            }
+          }
+        },
+        // Edit a food entry (change grams and/or nutritional info)
+        {
+          type: 'function',
+          function: {
+            name: 'edit_food_entry',
+            description: 'Edit an existing food entry. Can change the amount consumed and/or update the nutritional information of the underlying food.',
+            parameters: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'The ID of the food entry to edit' },
+                grams: { type: 'number', description: 'New amount in grams (optional)' },
+                caloriesPer100g: { type: 'number', description: 'Updated calories per 100g (optional)' },
+                proteinPer100g: { type: 'number', description: 'Updated protein in grams per 100g (optional)' },
+                carbsPer100g: { type: 'number', description: 'Updated carbohydrates in grams per 100g (optional)' },
+                fatPer100g: { type: 'number', description: 'Updated fat in grams per 100g (optional)' },
+                fiberPer100g: { type: 'number', description: 'Updated fiber in grams per 100g (optional)' },
+                saltPer100g: { type: 'number', description: 'Updated salt in grams per 100g (optional)' }
+              },
+              required: ['id']
+            }
+          }
+        },
+        // Delete a food entry
+        {
+          type: 'function',
+          function: {
+            name: 'delete_food_entry',
+            description: 'Delete a food entry from today\'s log',
+            parameters: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'The ID of the food entry to delete' }
+              },
+              required: ['id']
+            }
+          }
+        },
+        // Lookup nutritional info from web
+        {
+          type: 'function',
+          function: {
+            name: 'lookup_nutritional_info',
+            description: 'Look up nutritional information using web search. Use this for specific brands or foods not in your knowledge.',
+            parameters: {
+              type: 'object',
+              properties: {
+                foodDescription: { type: 'string', description: 'Description of the food to look up' }
+              },
+              required: ['foodDescription']
+            }
+          }
+        },
       ]
 
       const model = 'gpt-5-mini'
@@ -290,66 +415,195 @@ export async function POST(request: NextRequest) {
           const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
           await createChatEvent(chatSessionId, 'status', { type: 'status', message: `Executing ${name}...` })
           let toolResult = ''
-          
-          // Helper function to generate generic nutritional context
+
+          // Helper to get current nutritional context
           const generateNutritionalContext = async () => {
-            // Get updated nutritional data to include in the response
-            const { totals: updatedTotals, foodEntries: updatedFoodEntries } = await getCurrentNutritionalData(userId, targetDate);
-            
-            const totalsStr = `Current daily totals: ${updatedTotals.calories} calories, ${updatedTotals.protein}g protein, ${updatedTotals.carbs}g carbs, ${updatedTotals.fat}g fat, ${updatedTotals.fiber}g fiber, ${updatedTotals.salt}g salt.`;
-            
-            let entriesStr = '';
-            if (updatedFoodEntries.length > 0) {
-              entriesStr = `Current food entries table:\n` + updatedFoodEntries.map((entry: any, index: number) => {
-                const ratio = entry.portionSizeGrams / 100
-                const perPortion = {
-                  calories: entry.caloriesPer100g * ratio,
-                  protein: entry.proteinPer100g * ratio,
-                  carbs: entry.carbsPer100g * ratio,
-                  fat: entry.fatPer100g * ratio,
-                  fiber: entry.fiberPer100g * ratio,
-                  salt: entry.saltPer100g * ratio
+            const startDate = new Date(date)
+            startDate.setHours(0, 0, 0, 0)
+            const endDate = new Date(date)
+            endDate.setHours(23, 59, 59, 999)
+
+            const foodEntries = await prisma.foodEntry.findMany({
+              where: { userId, date: { gte: startDate, lte: endDate } },
+              include: { userFood: true },
+              orderBy: { timestamp: 'asc' }
+            })
+
+            const totals = foodEntries.reduce(
+              (acc, entry) => {
+                const ratio = entry.grams / 100
+                return {
+                  calories: acc.calories + (entry.userFood.caloriesPer100g * ratio),
+                  protein: acc.protein + (entry.userFood.proteinPer100g * ratio),
+                  carbs: acc.carbs + (entry.userFood.carbsPer100g * ratio),
+                  fat: acc.fat + (entry.userFood.fatPer100g * ratio),
+                  fiber: acc.fiber + (entry.userFood.fiberPer100g * ratio),
+                  salt: acc.salt + (entry.userFood.saltPer100g * ratio),
                 }
-                return `${index + 1}. ${entry.name} (${entry.quantity}) - ID: ${entry.id}\n   Macros: ${perPortion.calories.toFixed(0)} kcal, ${perPortion.protein.toFixed(1)}g protein, ${perPortion.carbs.toFixed(1)}g carbs, ${perPortion.fat.toFixed(1)}g fat, ${perPortion.fiber.toFixed(1)}g fiber, ${perPortion.salt.toFixed(1)}g salt`
-              }).join('\n');
+              },
+              { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
+            )
+
+            const totalsStr = `Current daily totals: ${Math.round(totals.calories)} calories, ${totals.protein.toFixed(1)}g protein, ${totals.carbs.toFixed(1)}g carbs, ${totals.fat.toFixed(1)}g fat, ${totals.fiber.toFixed(1)}g fiber, ${totals.salt.toFixed(2)}g salt.`
+
+            let entriesStr = ''
+            if (foodEntries.length > 0) {
+              entriesStr = `Current food entries:\n` + foodEntries.map((entry: any, index: number) => {
+                const ratio = entry.grams / 100
+                const cals = Math.round(entry.userFood.caloriesPer100g * ratio)
+                return `${index + 1}. ${entry.userFood.name} (${entry.grams}g, ${cals} kcal) - Entry ID: ${entry.id}`
+              }).join('\n')
             }
-            
-            return { totalsStr, entriesStr };
-          };
-          
-          // Helper function to format food operation results with current nutritional context
+
+            return { totalsStr, entriesStr, foodEntries }
+          }
+
           const formatFoodOperationResult = async (message: string) => {
-            const { totalsStr, entriesStr } = await generateNutritionalContext();
-            return `${message}\n\n${totalsStr}${entriesStr ? `\n${entriesStr}` : ''}`;
-          };
+            const { totalsStr, entriesStr } = await generateNutritionalContext()
+            return `${message}\n\n${totalsStr}${entriesStr ? `\n${entriesStr}` : ''}`
+          }
+
           try {
             switch (name) {
+              case 'create_food': {
+                const newFood = await prisma.userFood.create({
+                  data: {
+                    userId,
+                    name: parsedArgs.name,
+                    caloriesPer100g: Number(parsedArgs.caloriesPer100g),
+                    proteinPer100g: Number(parsedArgs.proteinPer100g),
+                    carbsPer100g: Number(parsedArgs.carbsPer100g),
+                    fatPer100g: Number(parsedArgs.fatPer100g),
+                    fiberPer100g: Number(parsedArgs.fiberPer100g),
+                    saltPer100g: Number(parsedArgs.saltPer100g),
+                    defaultGrams: parsedArgs.defaultGrams ? Number(parsedArgs.defaultGrams) : null,
+                    comments: parsedArgs.comments || null
+                  }
+                })
+                toolResult = `Added "${newFood.name}" to your food database.\nFood ID: ${newFood.id}. You can now use add_food_entry with this ID.`
+                break
+              }
+              case 'update_food': {
+                const existingFood = await prisma.userFood.findFirst({
+                  where: { id: parsedArgs.foodId, userId }
+                })
+                if (!existingFood) {
+                  toolResult = `Error: Food not found in database.`
+                } else {
+                  const updated = await prisma.userFood.update({
+                    where: { id: parsedArgs.foodId },
+                    data: {
+                      ...(parsedArgs.name !== undefined ? { name: parsedArgs.name } : {}),
+                      ...(parsedArgs.caloriesPer100g !== undefined ? { caloriesPer100g: Number(parsedArgs.caloriesPer100g) } : {}),
+                      ...(parsedArgs.proteinPer100g !== undefined ? { proteinPer100g: Number(parsedArgs.proteinPer100g) } : {}),
+                      ...(parsedArgs.carbsPer100g !== undefined ? { carbsPer100g: Number(parsedArgs.carbsPer100g) } : {}),
+                      ...(parsedArgs.fatPer100g !== undefined ? { fatPer100g: Number(parsedArgs.fatPer100g) } : {}),
+                      ...(parsedArgs.fiberPer100g !== undefined ? { fiberPer100g: Number(parsedArgs.fiberPer100g) } : {}),
+                      ...(parsedArgs.saltPer100g !== undefined ? { saltPer100g: Number(parsedArgs.saltPer100g) } : {}),
+                      ...(parsedArgs.defaultGrams !== undefined ? { defaultGrams: parsedArgs.defaultGrams ? Number(parsedArgs.defaultGrams) : null } : {}),
+                      ...(parsedArgs.comments !== undefined ? { comments: parsedArgs.comments || null } : {})
+                    }
+                  })
+                  toolResult = `Updated "${updated.name}" in your food database.`
+                }
+                break
+              }
               case 'add_food_entry': {
-                const entry = await addFoodEntry(userId, { ...parsedArgs, date });
-                const calories = Math.round((parsedArgs.caloriesPer100g * parsedArgs.portionSizeGrams) / 100);
-                const message = `Successfully added ${parsedArgs.name} (${parsedArgs.quantity}) with ${calories} calories to your food log.`;
-                toolResult = await formatFoodOperationResult(message);
-                result.foodAdded = entry;
-                break;
+                const food = await prisma.userFood.findFirst({
+                  where: { id: parsedArgs.userFoodId, userId }
+                })
+                if (!food) {
+                  toolResult = `Error: Food not found in database. Please create it first using create_food.`
+                } else {
+                  const entryDate = new Date(date)
+                  entryDate.setHours(0, 0, 0, 0)
+                  const entry = await prisma.foodEntry.create({
+                    data: {
+                      userId,
+                      userFoodId: parsedArgs.userFoodId,
+                      grams: Number(parsedArgs.grams),
+                      date: entryDate
+                    },
+                    include: { userFood: true }
+                  })
+                  const calories = Math.round((food.caloriesPer100g * parsedArgs.grams) / 100)
+                  const message = `Added ${parsedArgs.grams}g of ${food.name} (${calories} kcal) to your log.`
+                  toolResult = await formatFoodOperationResult(message)
+                  result.foodAdded = entry
+                }
+                break
               }
               case 'edit_food_entry': {
-                const updated = await editFoodEntry(userId, parsedArgs.id, parsedArgs);
-                const message = 'Successfully updated food entry.';
-                toolResult = await formatFoodOperationResult(message);
-                result.foodUpdated = updated;
-                break;
+                const entry = await prisma.foodEntry.findFirst({
+                  where: { id: parsedArgs.id, userId },
+                  include: { userFood: true }
+                })
+                if (!entry) {
+                  toolResult = `Error: Food entry not found.`
+                } else {
+                  const messages: string[] = []
+
+                  // Check if nutritional info updates are provided
+                  const nutritionUpdates: any = {}
+                  if (parsedArgs.caloriesPer100g !== undefined) nutritionUpdates.caloriesPer100g = Number(parsedArgs.caloriesPer100g)
+                  if (parsedArgs.proteinPer100g !== undefined) nutritionUpdates.proteinPer100g = Number(parsedArgs.proteinPer100g)
+                  if (parsedArgs.carbsPer100g !== undefined) nutritionUpdates.carbsPer100g = Number(parsedArgs.carbsPer100g)
+                  if (parsedArgs.fatPer100g !== undefined) nutritionUpdates.fatPer100g = Number(parsedArgs.fatPer100g)
+                  if (parsedArgs.fiberPer100g !== undefined) nutritionUpdates.fiberPer100g = Number(parsedArgs.fiberPer100g)
+                  if (parsedArgs.saltPer100g !== undefined) nutritionUpdates.saltPer100g = Number(parsedArgs.saltPer100g)
+
+                  // Update underlying food's nutritional info if any provided
+                  if (Object.keys(nutritionUpdates).length > 0) {
+                    await prisma.userFood.update({
+                      where: { id: entry.userFoodId },
+                      data: nutritionUpdates
+                    })
+                    messages.push(`Updated nutritional info for "${entry.userFood.name}".`)
+                  }
+
+                  // Update entry grams if provided
+                  let updated = entry
+                  if (parsedArgs.grams !== undefined) {
+                    updated = await prisma.foodEntry.update({
+                      where: { id: parsedArgs.id },
+                      data: { grams: Number(parsedArgs.grams) },
+                      include: { userFood: true }
+                    })
+                    messages.push(`Updated amount from ${entry.grams}g to ${parsedArgs.grams}g.`)
+                  } else {
+                    // Refetch to get updated userFood
+                    updated = await prisma.foodEntry.findFirst({
+                      where: { id: parsedArgs.id },
+                      include: { userFood: true }
+                    }) || entry
+                  }
+
+                  const message = messages.length > 0
+                    ? `${entry.userFood.name}: ${messages.join(' ')}`
+                    : `No changes made to ${entry.userFood.name}.`
+                  toolResult = await formatFoodOperationResult(message)
+                  result.foodUpdated = updated
+                }
+                break
               }
               case 'delete_food_entry': {
-                await deleteFoodEntry(userId, parsedArgs.id);
-                const message = 'Successfully deleted food entry.';
-                toolResult = await formatFoodOperationResult(message);
-                result.foodDeleted = parsedArgs.id;
-                break;
+                const entry = await prisma.foodEntry.findFirst({
+                  where: { id: parsedArgs.id, userId },
+                  include: { userFood: true }
+                })
+                if (!entry) {
+                  toolResult = `Error: Food entry not found.`
+                } else {
+                  await prisma.foodEntry.delete({ where: { id: parsedArgs.id } })
+                  const message = `Deleted ${entry.userFood.name} (${entry.grams}g) from your log.`
+                  toolResult = await formatFoodOperationResult(message)
+                  result.foodDeleted = parsedArgs.id
+                }
+                break
               }
               case 'lookup_nutritional_info': {
                 const nutritionalInfo = await lookupNutritionalInfo(parsedArgs.foodDescription)
-                try { await saveNutritionCacheItem(userId, parsedArgs.foodDescription, nutritionalInfo) } catch {}
-                toolResult = `Found nutritional information: ${JSON.stringify(nutritionalInfo)}`
+                toolResult = `Found nutritional information for "${parsedArgs.foodDescription}".\n${JSON.stringify(nutritionalInfo)}`
                 break
               }
               default:

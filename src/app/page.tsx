@@ -7,6 +7,7 @@ import { FoodEntryTable } from "@/components/food-entry-table"
 import { FoodEntryEditModal } from "@/components/food-entry-edit-modal"
 import { NutritionDashboard } from "@/components/nutrition-dashboard"
 import { useDailyLog } from "@/hooks/use-daily-log"
+import { useUserSettings } from "@/contexts/user-settings"
 import { useState } from "react"
 
 export default function Home() {
@@ -14,7 +15,8 @@ export default function Home() {
     const today = new Date()
     return today.toISOString().split('T')[0]
   })
-  const { data, loading, error, deleteFoodEntry, updateFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
+  const { data, loading, error, deleteFoodEntry, updateFoodEntry, addFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
+  const { userFoods } = useUserSettings()
   const [editingEntry, setEditingEntry] = useState<any>(null)
 
   const handleDeleteEntry = async (id: string) => {
@@ -25,11 +27,28 @@ export default function Home() {
     }
   }
 
-  const handleUpdateEntry = async (entry: any) => {
+  const handleUpdateEntry = async (id: string, updates: {
+    grams?: number
+    caloriesPer100g?: number
+    proteinPer100g?: number
+    carbsPer100g?: number
+    fatPer100g?: number
+    fiberPer100g?: number
+    saltPer100g?: number
+  }) => {
     try {
-      await updateFoodEntry(entry.id, entry)
+      await updateFoodEntry(id, updates)
     } catch (error) {
       console.error("Failed to update entry:", error)
+    }
+  }
+
+  const handleAddEntry = async (entry: { userFoodId: string; grams: number }) => {
+    try {
+      await addFoodEntry(entry)
+    } catch (error) {
+      console.error("Failed to add entry:", error)
+      throw error
     }
   }
 
@@ -83,7 +102,7 @@ export default function Home() {
         </header>
 
       <main className="min-h-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full min-h-0 grid grid-rows-[auto_1fr] gap-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full min-h-0 grid grid-rows-[auto_1fr] gap-6">
           {/* Top section: Daily Progress and Food Log side by side - same height */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
             <div className="lg:col-span-1 relative h-96">
@@ -94,32 +113,34 @@ export default function Home() {
               )}
               <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }} />
             </div>
-            
+
             <div className="lg:col-span-2 relative h-96">
               {loading && (
                 <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                 </div>
               )}
-              <FoodEntryTable 
-                entries={data?.dailyLog?.foodEntries || []}
+              <FoodEntryTable
+                entries={data?.foodEntries || []}
                 onEdit={handleEditEntry}
                 onDelete={handleDeleteEntry}
               />
             </div>
           </div>
-          
+
           {/* Bottom section: Chat takes all remaining vertical space */}
           <div className="h-96 md:min-h-0 md:h-full">
-            <ChatInterface 
+            <ChatInterface
               onDataUpdate={(u) => applyDataUpdate(u)}
               date={selectedDate}
+              userFoods={userFoods}
+              onQuickAdd={handleAddEntry}
             />
           </div>
         </div>
       </main>
       </div>
-      
+
       {editingEntry && (
         <FoodEntryEditModal
           entry={editingEntry}

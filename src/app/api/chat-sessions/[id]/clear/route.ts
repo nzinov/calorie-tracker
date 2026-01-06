@@ -22,9 +22,7 @@ export async function DELETE(
     const chatSession = await db.chatSession.findFirst({
       where: {
         id,
-        dailyLog: {
-          userId
-        }
+        userId
       }
     })
 

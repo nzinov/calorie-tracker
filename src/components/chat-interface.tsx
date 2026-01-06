@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
+import Fuse from "fuse.js"
 import { MarkdownRenderer } from "./markdown-renderer"
 
 interface ChatMessage {
@@ -20,12 +21,27 @@ type DataUpdate = {
   refetch?: boolean
 }
 
+export interface UserFood {
+  id: string
+  name: string
+  caloriesPer100g: number
+  proteinPer100g: number
+  carbsPer100g: number
+  fatPer100g: number
+  fiberPer100g: number
+  saltPer100g: number
+  defaultGrams: number | null
+  comments: string | null
+}
+
 interface ChatInterfaceProps {
   onDataUpdate?: (update: DataUpdate) => void
   date: string
+  userFoods?: UserFood[]
+  onQuickAdd?: (entry: { userFoodId: string; grams: number }) => Promise<void>
 }
 
-export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
+export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -42,6 +58,29 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
   const [cameraOpen, setCameraOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+
+  // Quick-add state
+  const [selectedFood, setSelectedFood] = useState<UserFood | null>(null)
+  const [quickAddGrams, setQuickAddGrams] = useState("")
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [quickAdding, setQuickAdding] = useState(false)
+  const gramsInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Fuzzy search for quick-add
+  const fuse = useMemo(() => {
+    return new Fuse(userFoods, {
+      keys: ['name', 'comments'],
+      threshold: 0.4,
+      includeScore: true,
+    })
+  }, [userFoods])
+
+  const searchResults = useMemo(() => {
+    if (!input.trim() || selectedFood) return []
+    const results = fuse.search(input)
+    return results.slice(0, 6).map(r => r.item)
+  }, [fuse, input, selectedFood])
 
   // Compress image to keep the request payload small (< ~900KB)
   const compressImageToDataUrl = async (file: File): Promise<string> => {
@@ -603,9 +642,57 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      if (selectedFood) {
+        handleQuickAddSubmit()
+      } else {
+        sendMessage()
+      }
+    } else if (e.key === "Escape") {
+      if (selectedFood) {
+        handleCancelQuickAdd()
+      } else {
+        setShowSuggestions(false)
+      }
     }
   }
+
+  // Quick-add handlers
+  const handleSelectFood = (food: UserFood) => {
+    setSelectedFood(food)
+    setQuickAddGrams(food.defaultGrams?.toString() || "")
+    setInput("")
+    setShowSuggestions(false)
+    setTimeout(() => gramsInputRef.current?.focus(), 50)
+  }
+
+  const handleQuickAddSubmit = async () => {
+    if (!selectedFood || !quickAddGrams || !onQuickAdd) return
+    const gramsNum = parseFloat(quickAddGrams)
+    if (isNaN(gramsNum) || gramsNum <= 0) return
+
+    setQuickAdding(true)
+    try {
+      await onQuickAdd({ userFoodId: selectedFood.id, grams: gramsNum })
+      setSelectedFood(null)
+      setQuickAddGrams("")
+      setInput("")
+      inputRef.current?.focus()
+    } catch (error) {
+      console.error("Failed to quick-add:", error)
+    } finally {
+      setQuickAdding(false)
+    }
+  }
+
+  const handleCancelQuickAdd = () => {
+    setSelectedFood(null)
+    setQuickAddGrams("")
+    inputRef.current?.focus()
+  }
+
+  const previewCalories = selectedFood && quickAddGrams
+    ? Math.round((selectedFood.caloriesPer100g * parseFloat(quickAddGrams || "0")) / 100)
+    : 0
 
   return (
     <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col" ref={chatRef}>
@@ -704,12 +791,12 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
 
             const getActionIcon = (text: string) => {
               const t = text.toLowerCase()
+              if (t.includes("error")) return "❌"
+              // Nutritional lookup success
+              if (t.includes("found nutritional information") || t.startsWith("nutritional info:")) return "✅"
               if (t.includes("added")) return "✅"
               if (t.includes("updated")) return "✏️"
               if (t.includes("deleted")) return "🗑️"
-              if (t.includes("error")) return "❌"
-              // Treat nutritional lookup success as a success checkmark
-              if (t.includes("found nutritional information") || t.startsWith("nutritional info:")) return "✅"
               return "📝"
             }
             const getActionColor = (text: string) => {
@@ -783,67 +870,131 @@ export function ChatInterface({ onDataUpdate, date }: ChatInterfaceProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex space-x-2 mt-3 md:mt-4">
-        <div className="flex items-center">
-          <label
-            className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50"
-            onClick={(e) => {
-              if (loading) return
-              if (isAndroid()) {
-                e.preventDefault()
-                openCamera()
-              }
-            }}
+      {/* Search suggestions */}
+      {showSuggestions && searchResults.length > 0 && !selectedFood && (
+        <div className="mb-2 bg-gray-50 rounded-lg border border-gray-200 max-h-48 overflow-y-auto">
+          {searchResults.map((food) => (
+            <button
+              key={food.id}
+              onClick={() => handleSelectFood(food)}
+              className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+            >
+              <div className="font-medium text-gray-900 text-sm">{food.name}</div>
+              <div className="text-xs text-gray-500">
+                {Math.round(food.caloriesPer100g)} cal/100g
+                {food.defaultGrams && ` · ${food.defaultGrams}g`}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Quick-add mode: food selected, entering grams */}
+      {selectedFood ? (
+        <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-gray-900 text-sm truncate">{selectedFood.name}</div>
+            <div className="text-xs text-gray-600">{previewCalories} kcal</div>
+          </div>
+          <input
+            ref={gramsInputRef}
+            type="number"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={quickAddGrams}
+            onChange={(e) => setQuickAddGrams(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="g"
+            className="w-20 px-3 py-2 border border-gray-300 rounded-md text-center text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={quickAdding}
+          />
+          <span className="text-gray-600 text-sm">g</span>
+          <button
+            onClick={handleQuickAddSubmit}
+            disabled={quickAdding || !quickAddGrams || parseFloat(quickAddGrams) <= 0}
+            className="px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
-            📷
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*;capture=environment"
-              {...({ capture: 'environment' } as any)}
-              className="sr-only"
-              onChange={async (e) => {
-                const file = e.target.files?.[0]
-                if (!file) return
-                setImageName(file.name)
-                try {
-                  const dataUrl = await compressImageToDataUrl(file)
-                  setImageDataUrl(dataUrl)
-                } catch (err) {
-                  console.error('Failed to process image', err)
-                  alert('Failed to process the image. Please try another file.')
-                  e.currentTarget.value = ""
+            {quickAdding ? "..." : "Add"}
+          </button>
+          <button
+            onClick={handleCancelQuickAdd}
+            disabled={quickAdding}
+            className="p-2 text-gray-500 hover:text-gray-700"
+          >
+            ✕
+          </button>
+        </div>
+      ) : (
+        <div className="flex space-x-2 mt-3 md:mt-4">
+          <div className="flex items-center">
+            <label
+              className="cursor-pointer inline-flex items-center px-2 py-2 border border-gray-400 rounded-lg text-xs md:text-sm text-gray-800 hover:bg-gray-50"
+              onClick={(e) => {
+                if (loading) return
+                if (isAndroid()) {
+                  e.preventDefault()
+                  openCamera()
                 }
               }}
-              disabled={loading}
-            />
-          </label>
+            >
+              📷
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*;capture=environment"
+                {...({ capture: 'environment' } as any)}
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  setImageName(file.name)
+                  try {
+                    const dataUrl = await compressImageToDataUrl(file)
+                    setImageDataUrl(dataUrl)
+                  } catch (err) {
+                    console.error('Failed to process image', err)
+                    alert('Failed to process the image. Please try another file.')
+                    e.currentTarget.value = ""
+                  }
+                }}
+                disabled={loading}
+              />
+            </label>
+          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value)
+              setShowSuggestions(true)
+            }}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              setShowSuggestions(true)
+              setTimeout(() => {
+                try {
+                  chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
+                } catch {}
+              }, 500)
+            }}
+            onBlur={() => {
+              // Delay hiding to allow click on suggestion
+              setTimeout(() => setShowSuggestions(false), 200)
+            }}
+            placeholder="Type food name or chat message..."
+            className="flex-1 border border-gray-400 rounded-lg px-3 py-2 text-sm md:text-base text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+            disabled={loading}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loading || (!input.trim() && !imageDataUrl)}
+            className="bg-blue-500 text-white px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
         </div>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => {
-            // On focus, bring the chat container into view
-            setTimeout(() => {
-              try {
-                chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
-              } catch {}
-            }, 500)
-          }}
-          placeholder="Try: I had chicken and rice... or /clear to clear chat"
-          className="flex-1 border border-gray-400 rounded-lg px-3 py-2 text-sm md:text-base text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
-          disabled={loading}
-        />
-        <button
-          onClick={sendMessage}
-          disabled={loading || (!input.trim() && !imageDataUrl)}
-          className="bg-blue-500 text-white px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Send
-        </button>
-      </div>
+      )}
 
       {imageDataUrl && (
         <div className="mt-2 flex items-center gap-2">

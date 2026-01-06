@@ -9,25 +9,21 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
-    
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
     const body = await request.json()
-    const { name, quantity, portionSizeGrams, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g } = body
+    const { grams, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g } = body
 
     // Verify the food entry belongs to the user
     const existingEntry = await db.foodEntry.findFirst({
-      where: {
-        id: id,
-        dailyLog: {
-          userId: userId,
-        },
-      },
+      where: { id, userId },
+      include: { userFood: true }
     })
 
     if (!existingEntry) {
@@ -37,20 +33,31 @@ export async function PUT(
       )
     }
 
-    // Update the food entry
+    // Update underlying food's nutritional info if provided
+    const nutritionUpdates: any = {}
+    if (caloriesPer100g !== undefined) nutritionUpdates.caloriesPer100g = Number(caloriesPer100g)
+    if (proteinPer100g !== undefined) nutritionUpdates.proteinPer100g = Number(proteinPer100g)
+    if (carbsPer100g !== undefined) nutritionUpdates.carbsPer100g = Number(carbsPer100g)
+    if (fatPer100g !== undefined) nutritionUpdates.fatPer100g = Number(fatPer100g)
+    if (fiberPer100g !== undefined) nutritionUpdates.fiberPer100g = Number(fiberPer100g)
+    if (saltPer100g !== undefined) nutritionUpdates.saltPer100g = Number(saltPer100g)
+
+    if (Object.keys(nutritionUpdates).length > 0) {
+      await db.userFood.update({
+        where: { id: existingEntry.userFoodId },
+        data: nutritionUpdates
+      })
+    }
+
+    // Update the food entry grams if provided
     const updatedEntry = await db.foodEntry.update({
-      where: { id: id },
+      where: { id },
       data: {
-        name: name || existingEntry.name,
-        quantity: quantity || existingEntry.quantity,
-        portionSizeGrams: portionSizeGrams !== undefined ? parseFloat(portionSizeGrams) : existingEntry.portionSizeGrams,
-        caloriesPer100g: caloriesPer100g !== undefined ? parseFloat(caloriesPer100g) : existingEntry.caloriesPer100g,
-        proteinPer100g: proteinPer100g !== undefined ? parseFloat(proteinPer100g) : existingEntry.proteinPer100g,
-        carbsPer100g: carbsPer100g !== undefined ? parseFloat(carbsPer100g) : existingEntry.carbsPer100g,
-        fatPer100g: fatPer100g !== undefined ? parseFloat(fatPer100g) : existingEntry.fatPer100g,
-        fiberPer100g: fiberPer100g !== undefined ? parseFloat(fiberPer100g) : existingEntry.fiberPer100g,
-        saltPer100g: saltPer100g !== undefined ? parseFloat(saltPer100g) : existingEntry.saltPer100g,
+        ...(grams !== undefined ? { grams: Number(grams) } : {})
       },
+      include: {
+        userFood: true
+      }
     })
 
     return NextResponse.json(updatedEntry)
@@ -69,9 +76,9 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
-    
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -80,12 +87,7 @@ export async function DELETE(
 
     // Verify the food entry belongs to the user
     const existingEntry = await db.foodEntry.findFirst({
-      where: {
-        id: id,
-        dailyLog: {
-          userId: userId,
-        },
-      },
+      where: { id, userId }
     })
 
     if (!existingEntry) {
@@ -97,7 +99,7 @@ export async function DELETE(
 
     // Delete the food entry
     await db.foodEntry.delete({
-      where: { id: id },
+      where: { id }
     })
 
     return NextResponse.json({ success: true })

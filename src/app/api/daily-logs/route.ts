@@ -3,92 +3,80 @@ import { db } from "@/lib/db"
 import { getServerSession } from "next-auth/next"
 import { NextRequest, NextResponse } from "next/server"
 
-// Helper function to calculate per-portion values from per100g data
-function calculatePerPortion(entry: any) {
-  if (!entry.portionSizeGrams) return entry
-  
-  const ratio = entry.portionSizeGrams / 100
-  return {
-    ...entry,
-    calories: entry.caloriesPer100g * ratio,
-    protein: entry.proteinPer100g * ratio,
-    carbs: entry.carbsPer100g * ratio,
-    fat: entry.fatPer100g * ratio,
-    fiber: entry.fiberPer100g * ratio,
-    salt: entry.saltPer100g * ratio
-  }
+// Helper function to calculate nutrition totals from food entries
+function calculateTotals(entries: Array<{ grams: number; userFood: { caloriesPer100g: number; proteinPer100g: number; carbsPer100g: number; fatPer100g: number; fiberPer100g: number; saltPer100g: number } }>) {
+  return entries.reduce(
+    (acc, entry) => {
+      const ratio = entry.grams / 100
+      return {
+        calories: acc.calories + (entry.userFood.caloriesPer100g * ratio),
+        protein: acc.protein + (entry.userFood.proteinPer100g * ratio),
+        carbs: acc.carbs + (entry.userFood.carbsPer100g * ratio),
+        fat: acc.fat + (entry.userFood.fatPer100g * ratio),
+        fiber: acc.fiber + (entry.userFood.fiberPer100g * ratio),
+        salt: acc.salt + (entry.userFood.saltPer100g * ratio),
+      }
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
+  )
 }
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
-    
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Ensure dev user exists in development mode
     if (process.env.NODE_ENV === 'development') {
-      const existingUser = await db.user.findUnique({
-        where: { id: 'dev-user' }
+      await db.user.upsert({
+        where: { id: userId },
+        update: {},
+        create: { id: userId, email: 'dev@localhost' }
       })
-      
-      if (!existingUser) {
-        await db.user.create({
-          data: {
-            id: 'dev-user',
-            email: 'dev@example.com',
-            name: 'Dev User'
-          }
-        })
-      }
     }
 
     const { searchParams } = new URL(request.url)
     const dateParam = searchParams.get("date")
-    
+
     if (!dateParam) {
       return NextResponse.json({ error: "Date parameter is required" }, { status: 400 })
     }
-    
-    const inputDate = new Date(dateParam)
-    
-    // Create a new Date object to avoid mutating input
-    const date = new Date(inputDate)
-    date.setHours(0, 0, 0, 0)
 
-    const dailyLog = await db.dailyLog.upsert({
-      where: { userId_date: { userId, date } },
-      update: {},
-      create: { userId, date },
-      include: {
-        foodEntries: {
-          orderBy: { timestamp: "asc" },
-        },
-      },
-    })
+    // Parse date to start and end of day for querying
+    const startDate = new Date(dateParam)
+    startDate.setHours(0, 0, 0, 0)
 
-    // Calculate totals by converting per100g to per-portion values
-    const totals = dailyLog.foodEntries.reduce(
-      (acc, entry) => {
-        const perPortion = calculatePerPortion(entry)
-        return {
-          calories: acc.calories + perPortion.calories,
-          protein: acc.protein + perPortion.protein,
-          carbs: acc.carbs + perPortion.carbs,
-          fat: acc.fat + perPortion.fat,
-          fiber: acc.fiber + perPortion.fiber,
-          salt: acc.salt + perPortion.salt,
+    const endDate = new Date(dateParam)
+    endDate.setHours(23, 59, 59, 999)
+
+    // Get food entries for this date with userFood info included
+    const foodEntries = await db.foodEntry.findMany({
+      where: {
+        userId,
+        date: {
+          gte: startDate,
+          lte: endDate
         }
       },
-      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
-    )
-    console.log('dailyLog', date, userId, totals)
+      include: {
+        userFood: true
+      },
+      orderBy: { timestamp: "asc" }
+    })
+
+    // Calculate totals
+    const totals = calculateTotals(foodEntries)
+
+    console.log('daily-logs', startDate, userId, totals)
 
     return NextResponse.json({
-      dailyLog,
+      date: startDate.toISOString(),
+      foodEntries,
       totals,
     })
   } catch (error) {

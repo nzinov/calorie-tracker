@@ -56,10 +56,11 @@ model User {
   targetFiber    Float?
   targetSalt     Float?
 
-  accounts  Account[]
-  sessions  Session[]
-  dailyLogs DailyLog[]
-  nutritionCacheItems NutritionCacheItem[]
+  accounts     Account[]
+  sessions     Session[]
+  userFoods    UserFood[]
+  foodEntries  FoodEntry[]
+  chatSessions ChatSession[]
 
   @@map("users")
 }
@@ -73,48 +74,58 @@ model VerificationToken {
   @@map("verificationtokens")
 }
 
-model DailyLog {
-  id     String   @id @default(cuid())
-  date   DateTime
-  userId String
+// Central food database per user - stores nutritional info for each food type
+model UserFood {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  caloriesPer100g Float
+  proteinPer100g  Float
+  carbsPer100g    Float
+  fatPer100g      Float
+  fiberPer100g    Float
+  saltPer100g     Float
+  defaultGrams    Float?   // Optional default portion size for quick-add
+  comments        String?  // AI can store additional info (portion descriptions, notes, etc.)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  foodEntries  FoodEntry[]
-  chatSessions ChatSession[]
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodEntries FoodEntry[]
 
-  @@unique([userId, date])
-  @@map("daily_logs")
+  @@unique([userId, name])
+  @@map("user_foods")
 }
 
+// Food entry - just links to UserFood with amount consumed
 model FoodEntry {
-  id          String   @id @default(cuid())
-  name        String
-  quantity    String
-  portionSizeGrams Float
-  caloriesPer100g Float
-  proteinPer100g Float
-  carbsPer100g Float
-  fatPer100g Float
-  fiberPer100g Float
-  saltPer100g Float
-  timestamp   DateTime @default(now())
-  dailyLogId  String
+  id         String   @id @default(cuid())
+  userId     String
+  userFoodId String
+  date       DateTime // The day this entry belongs to
+  grams      Float    // Amount consumed in grams
+  timestamp  DateTime @default(now())
 
-  dailyLog DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userFood UserFood @relation(fields: [userFoodId], references: [id], onDelete: Cascade)
 
+  @@index([userId, date])
   @@map("food_entries")
 }
 
+// Chat session - now directly linked to user + date instead of DailyLog
 model ChatSession {
-  id         String   @id @default(cuid())
-  dailyLogId String   @unique
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  dailyLog DailyLog      @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
   events   ChatEvent[]
 
+  @@unique([userId, date])
   @@map("chat_sessions")
 }
 
@@ -124,7 +135,7 @@ model ChatMessage {
   content       String?
   timestamp     DateTime @default(now())
   chatSessionId String
-  
+
   // OpenAI-compatible fields
   toolCalls     String?  // JSON array of tool calls (only for assistant messages)
   toolCallId    String?  // Tool call ID (only for tool messages)
@@ -145,27 +156,4 @@ model ChatEvent {
 
   @@index([chatSessionId, createdAt])
   @@map("chat_events")
-}
-
-model NutritionCacheItem {
-  id                String   @id @default(cuid())
-  userId            String
-  key               String
-  name              String
-  portionDescription String
-  portionSizeGrams  Float
-  caloriesPer100g   Float
-  proteinPer100g    Float
-  carbsPer100g      Float
-  fatPer100g        Float
-  fiberPer100g      Float
-  saltPer100g       Float
-  rawJson           String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, key])
-  @@map("nutrition_cache_items")
 }

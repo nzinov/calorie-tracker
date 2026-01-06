@@ -1,18 +1,28 @@
 import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 
-interface FoodEntry {
+// UserFood represents a food in user's database
+interface UserFood {
   id: string
   name: string
-  quantity: string
-  portionSizeGrams: number
   caloriesPer100g: number
   proteinPer100g: number
   carbsPer100g: number
   fatPer100g: number
   fiberPer100g: number
   saltPer100g: number
+  defaultGrams: number | null
+  comments: string | null
+}
+
+// FoodEntry is a daily log entry referencing a UserFood
+interface FoodEntry {
+  id: string
+  userFoodId: string
+  grams: number
+  date: string
   timestamp: Date
+  userFood: UserFood
 }
 
 interface NutritionTotals {
@@ -25,11 +35,8 @@ interface NutritionTotals {
 }
 
 interface DailyLogData {
-  dailyLog: {
-    id: string
-    date: string
-    foodEntries: FoodEntry[]
-  }
+  date: string
+  foodEntries: FoodEntry[]
   totals: NutritionTotals
 }
 
@@ -39,17 +46,32 @@ export function useDailyLog(date: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Helper function to calculate per-portion values from per100g data
-  function calculatePerPortion(entry: any) {
-    const ratio = entry.portionSizeGrams / 100
+  // Helper function to calculate nutrition from entry
+  function calculateEntryNutrition(entry: FoodEntry) {
+    const ratio = entry.grams / 100
     return {
-      calories: entry.caloriesPer100g * ratio,
-      protein: entry.proteinPer100g * ratio,
-      carbs: entry.carbsPer100g * ratio,
-      fat: entry.fatPer100g * ratio,
-      fiber: entry.fiberPer100g * ratio,
-      salt: entry.saltPer100g * ratio
+      calories: entry.userFood.caloriesPer100g * ratio,
+      protein: entry.userFood.proteinPer100g * ratio,
+      carbs: entry.userFood.carbsPer100g * ratio,
+      fat: entry.userFood.fatPer100g * ratio,
+      fiber: entry.userFood.fiberPer100g * ratio,
+      salt: entry.userFood.saltPer100g * ratio
     }
+  }
+
+  // Calculate totals from food entries
+  function calculateTotals(entries: FoodEntry[]): NutritionTotals {
+    return entries.reduce((totals, entry) => {
+      const nutrition = calculateEntryNutrition(entry)
+      return {
+        calories: totals.calories + nutrition.calories,
+        protein: totals.protein + nutrition.protein,
+        carbs: totals.carbs + nutrition.carbs,
+        fat: totals.fat + nutrition.fat,
+        fiber: totals.fiber + nutrition.fiber,
+        salt: totals.salt + nutrition.salt,
+      }
+    }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
   }
 
   const fetchData = useCallback(async () => {
@@ -63,19 +85,19 @@ export function useDailyLog(date: string) {
       setLoading(true)
       const params = `?date=${date}`
       const response = await fetch(`/api/daily-logs${params}`)
-      
+
       if (!response.ok) {
         throw new Error("Failed to fetch daily log")
       }
 
       const result = await response.json()
-      
+
       // Convert timestamp strings to Date objects
-      result.dailyLog.foodEntries = result.dailyLog.foodEntries.map((entry: any) => ({
+      result.foodEntries = result.foodEntries.map((entry: any) => ({
         ...entry,
         timestamp: new Date(entry.timestamp),
       }))
-      
+
       setData(result)
       setError(null)
     } catch (err) {
@@ -87,13 +109,13 @@ export function useDailyLog(date: string) {
 
   useEffect(() => {
     // Clear data when date changes to avoid working with stale data
-    if (data?.dailyLog) {
+    if (data) {
       setData(null);
     }
     fetchData();
   }, [fetchData, date])
 
-  const addFoodEntry = async (entry: Omit<FoodEntry, "id" | "timestamp">) => {
+  const addFoodEntry = async (entry: { userFoodId: string; grams: number }) => {
     try {
       const response = await fetch("/api/food-entries", {
         method: "POST",
@@ -108,53 +130,48 @@ export function useDailyLog(date: string) {
       }
 
       const newEntry = await response.json()
-      
+
       // Optimistic update - add the new entry to existing data
       setData(prev => {
         if (!prev) return null
-        
+
         const newFoodEntry = {
           ...newEntry,
           timestamp: new Date(newEntry.timestamp)
         }
-        
-        const updatedEntries = [...prev.dailyLog.foodEntries, newFoodEntry]
-        
-        // Recalculate totals by converting per100g to per-portion values
-        const newTotals = updatedEntries.reduce((totals, entry) => {
-          const perPortion = calculatePerPortion(entry)
-          return {
-            calories: totals.calories + perPortion.calories,
-            protein: totals.protein + perPortion.protein,
-            carbs: totals.carbs + perPortion.carbs,
-            fat: totals.fat + perPortion.fat,
-            fiber: totals.fiber + perPortion.fiber,
-            salt: totals.salt + perPortion.salt,
-          }
-        }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
-        
+
+        const updatedEntries = [...prev.foodEntries, newFoodEntry]
+        const newTotals = calculateTotals(updatedEntries)
+
         return {
           ...prev,
-          dailyLog: {
-            ...prev.dailyLog,
-            foodEntries: updatedEntries
-          },
+          foodEntries: updatedEntries,
           totals: newTotals
         }
       })
+
+      return newEntry
     } catch (err) {
       throw err
     }
   }
 
-  const updateFoodEntry = async (id: string, entry: Partial<Omit<FoodEntry, "id" | "timestamp">>) => {
+  const updateFoodEntry = async (id: string, updates: {
+    grams?: number
+    caloriesPer100g?: number
+    proteinPer100g?: number
+    carbsPer100g?: number
+    fatPer100g?: number
+    fiberPer100g?: number
+    saltPer100g?: number
+  }) => {
     try {
       const response = await fetch(`/api/food-entries/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(entry),
+        body: JSON.stringify(updates),
       })
 
       if (!response.ok) {
@@ -162,36 +179,22 @@ export function useDailyLog(date: string) {
       }
 
       const updatedEntry = await response.json()
-      
+
       // Optimistic update - update the entry in existing data
       setData(prev => {
         if (!prev) return null
-        
-        const updatedEntries = prev.dailyLog.foodEntries.map(existingEntry => 
-          existingEntry.id === id 
+
+        const updatedEntries = prev.foodEntries.map(existingEntry =>
+          existingEntry.id === id
             ? { ...updatedEntry, timestamp: new Date(updatedEntry.timestamp) }
             : existingEntry
         )
-        
-        // Recalculate totals by converting per100g to per-portion values
-        const newTotals = updatedEntries.reduce((totals, entry) => {
-          const perPortion = calculatePerPortion(entry)
-          return {
-            calories: totals.calories + perPortion.calories,
-            protein: totals.protein + perPortion.protein,
-            carbs: totals.carbs + perPortion.carbs,
-            fat: totals.fat + perPortion.fat,
-            fiber: totals.fiber + perPortion.fiber,
-            salt: totals.salt + perPortion.salt,
-          }
-        }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
-        
+
+        const newTotals = calculateTotals(updatedEntries)
+
         return {
           ...prev,
-          dailyLog: {
-            ...prev.dailyLog,
-            foodEntries: updatedEntries
-          },
+          foodEntries: updatedEntries,
           totals: newTotals
         }
       })
@@ -209,32 +212,17 @@ export function useDailyLog(date: string) {
       if (!response.ok) {
         throw new Error("Failed to delete food entry")
       }
-      
+
       // Optimistic update - remove the entry from existing data
       setData(prev => {
         if (!prev) return null
-        
-        const updatedEntries = prev.dailyLog.foodEntries.filter(entry => entry.id !== id)
-        
-        // Recalculate totals by converting per100g to per-portion values
-        const newTotals = updatedEntries.reduce((totals, entry) => {
-          const perPortion = calculatePerPortion(entry)
-          return {
-            calories: totals.calories + perPortion.calories,
-            protein: totals.protein + perPortion.protein,
-            carbs: totals.carbs + perPortion.carbs,
-            fat: totals.fat + perPortion.fat,
-            fiber: totals.fiber + perPortion.fiber,
-            salt: totals.salt + perPortion.salt,
-          }
-        }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
-        
+
+        const updatedEntries = prev.foodEntries.filter(entry => entry.id !== id)
+        const newTotals = calculateTotals(updatedEntries)
+
         return {
           ...prev,
-          dailyLog: {
-            ...prev.dailyLog,
-            foodEntries: updatedEntries
-          },
+          foodEntries: updatedEntries,
           totals: newTotals
         }
       })
@@ -248,7 +236,7 @@ export function useDailyLog(date: string) {
     setData(prev => {
       if (!prev) return prev
 
-      let updatedEntries = prev.dailyLog.foodEntries
+      let updatedEntries = prev.foodEntries
 
       if (update.foodAdded) {
         const entry = update.foodAdded
@@ -271,25 +259,11 @@ export function useDailyLog(date: string) {
         return prev
       }
 
-      // Recalculate totals by converting per100g to per-portion values
-      const newTotals = updatedEntries.reduce((totals, entry) => {
-        const perPortion = calculatePerPortion(entry)
-        return {
-          calories: totals.calories + perPortion.calories,
-          protein: totals.protein + perPortion.protein,
-          carbs: totals.carbs + perPortion.carbs,
-          fat: totals.fat + perPortion.fat,
-          fiber: totals.fiber + perPortion.fiber,
-          salt: totals.salt + perPortion.salt,
-        }
-      }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+      const newTotals = calculateTotals(updatedEntries)
 
       return {
         ...prev,
-        dailyLog: {
-          ...prev.dailyLog,
-          foodEntries: updatedEntries
-        },
+        foodEntries: updatedEntries,
         totals: newTotals
       }
     })

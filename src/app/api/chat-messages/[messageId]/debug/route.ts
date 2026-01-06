@@ -17,14 +17,12 @@ export async function GET(
     const userId = process.env.NODE_ENV === 'development' ? 'dev-user' : (session as any)?.user?.id
     const { messageId } = await params
 
-    // Fetch the message and verify it belongs to the user (through chat session -> daily log)
+    // Fetch the message and verify it belongs to the user (through chat session)
     const message = await prisma.chatMessage.findFirst({
       where: {
         id: messageId,
         chatSession: {
-          dailyLog: {
-            userId
-          }
+          userId
         }
       },
       select: {

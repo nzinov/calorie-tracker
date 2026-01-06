@@ -12,33 +12,30 @@ export type Targets = {
   salt: number
 }
 
-export type NutritionCacheItem = {
+export type UserFood = {
   id: string
-  userId: string
-  key: string
   name: string
-  portionDescription: string
-  portionSizeGrams: number
   caloriesPer100g: number
   proteinPer100g: number
   carbsPer100g: number
   fatPer100g: number
   fiberPer100g: number
   saltPer100g: number
-  rawJson: string | null
-  createdAt: Date
-  updatedAt: Date
+  defaultGrams: number | null
+  comments: string | null
 }
 
 type Ctx = {
   targets: Targets
-  nutritionCacheItems: NutritionCacheItem[]
+  userFoods: UserFood[]
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
   saveTargets: (t: Partial<Targets>) => Promise<void>
-  fetchNutritionCache: () => Promise<void>
-  deleteNutritionCacheItem: (id: string) => Promise<void>
+  fetchUserFoods: () => Promise<void>
+  createUserFood: (food: Omit<UserFood, 'id'>) => Promise<UserFood>
+  updateUserFood: (id: string, food: Partial<UserFood>) => Promise<UserFood>
+  deleteUserFood: (id: string) => Promise<void>
 }
 
 const defaultTargets: Targets = { ...DAILY_TARGETS }
@@ -47,7 +44,7 @@ const UserSettingsContext = createContext<Ctx | undefined>(undefined)
 
 export function UserSettingsProvider({ children }: { children: React.ReactNode }) {
   const [targets, setTargets] = useState<Targets>(defaultTargets)
-  const [nutritionCacheItems, setNutritionCacheItems] = useState<NutritionCacheItem[]>([])
+  const [userFoods, setUserFoods] = useState<UserFood[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,45 +74,74 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
     setTargets(prev => ({ ...prev, ...t }))
   }, [])
 
-  const fetchNutritionCache = useCallback(async () => {
+  const fetchUserFoods = useCallback(async () => {
     try {
-      const res = await fetch("/api/nutrition-cache")
-      if (!res.ok) throw new Error("Failed to load nutrition cache")
+      const res = await fetch("/api/user-foods")
+      if (!res.ok) throw new Error("Failed to load food database")
       const data = await res.json()
-      setNutritionCacheItems(data.items as NutritionCacheItem[])
+      setUserFoods(data.items as UserFood[])
     } catch (e: any) {
-      console.error("Failed to fetch nutrition cache:", e)
+      console.error("Failed to fetch food database:", e)
     }
   }, [])
 
-  const deleteNutritionCacheItem = useCallback(async (id: string) => {
-    try {
-      const res = await fetch(`/api/nutrition-cache?id=${id}`, {
-        method: "DELETE",
-      })
-      if (!res.ok) throw new Error("Failed to delete nutrition cache item")
-      // Remove from local state
-      setNutritionCacheItems(prev => prev.filter(item => item.id !== id))
-    } catch (e: any) {
-      console.error("Failed to delete nutrition cache item:", e)
-      throw e
+  const createUserFood = useCallback(async (food: Omit<UserFood, 'id'>) => {
+    const res = await fetch("/api/user-foods", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(food),
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || "Failed to create food")
     }
+    const newFood = await res.json()
+    setUserFoods(prev => [newFood, ...prev])
+    return newFood
   }, [])
 
-  useEffect(() => { 
+  const updateUserFood = useCallback(async (id: string, food: Partial<UserFood>) => {
+    const res = await fetch(`/api/user-foods/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(food),
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || "Failed to update food")
+    }
+    const updatedFood = await res.json()
+    setUserFoods(prev => prev.map(f => f.id === id ? updatedFood : f))
+    return updatedFood
+  }, [])
+
+  const deleteUserFood = useCallback(async (id: string) => {
+    const res = await fetch(`/api/user-foods/${id}`, {
+      method: "DELETE",
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || "Failed to delete food")
+    }
+    setUserFoods(prev => prev.filter(f => f.id !== id))
+  }, [])
+
+  useEffect(() => {
     refetch()
-    fetchNutritionCache()
-  }, [refetch, fetchNutritionCache])
+    fetchUserFoods()
+  }, [refetch, fetchUserFoods])
 
-  const value: Ctx = { 
-    targets, 
-    nutritionCacheItems, 
-    loading, 
-    error, 
-    refetch, 
-    saveTargets, 
-    fetchNutritionCache, 
-    deleteNutritionCacheItem 
+  const value: Ctx = {
+    targets,
+    userFoods,
+    loading,
+    error,
+    refetch,
+    saveTargets,
+    fetchUserFoods,
+    createUserFood,
+    updateUserFood,
+    deleteUserFood
   }
   return <UserSettingsContext.Provider value={value}>{children}</UserSettingsContext.Provider>
 }
