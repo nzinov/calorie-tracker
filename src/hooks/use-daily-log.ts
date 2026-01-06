@@ -240,6 +240,10 @@ export function useDailyLog(date: string) {
 
       if (update.foodAdded) {
         const entry = update.foodAdded
+        // Skip if entry already exists (dedup SSE replays / multi-tab)
+        if (updatedEntries.some(e => e.id === entry.id)) {
+          return prev
+        }
         const newEntry = {
           ...entry,
           timestamp: new Date(entry.timestamp)
@@ -247,6 +251,10 @@ export function useDailyLog(date: string) {
         updatedEntries = [...updatedEntries, newEntry]
       } else if (update.foodUpdated) {
         const entry = update.foodUpdated
+        // Skip if entry doesn't exist (already deleted)
+        if (!updatedEntries.some(e => e.id === entry.id)) {
+          return prev
+        }
         const updated = {
           ...entry,
           timestamp: new Date(entry.timestamp)
@@ -254,6 +262,10 @@ export function useDailyLog(date: string) {
         updatedEntries = updatedEntries.map(e => e.id === updated.id ? updated : e)
       } else if (update.foodDeleted) {
         const id = update.foodDeleted
+        // Skip if entry doesn't exist (already deleted)
+        if (!updatedEntries.some(e => e.id === id)) {
+          return prev
+        }
         updatedEntries = updatedEntries.filter(e => e.id !== id)
       } else {
         return prev
