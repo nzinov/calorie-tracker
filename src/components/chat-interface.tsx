@@ -215,15 +215,30 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
         fileInputRef.current?.click()
         return
       }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          zoom: { ideal: 1 },
-        } as MediaTrackConstraints,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
         audio: false,
       })
+
+      // Try to set zoom to minimum after getting stream
+      const track = stream.getVideoTracks()[0]
+      if (track) {
+        try {
+          const capabilities = track.getCapabilities() as any
+          if (capabilities?.zoom) {
+            const minZoom = capabilities.zoom.min || 1
+            await track.applyConstraints({ advanced: [{ zoom: minZoom }] } as any)
+          }
+        } catch (e) {
+          console.log('Zoom control not supported', e)
+        }
+      }
+
       streamRef.current = stream
       if (videoRef.current) {
         try { (videoRef.current as any).srcObject = stream } catch {}
