@@ -872,12 +872,13 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd }
 
       {/* Search suggestions */}
       {showSuggestions && searchResults.length > 0 && !selectedFood && (
-        <div className="mb-2 bg-gray-50 rounded-lg border border-gray-200 max-h-48 overflow-y-auto">
+        <div className="mb-2 bg-gray-50 rounded-lg border border-gray-200 max-h-48 overflow-y-auto z-20 relative">
           {searchResults.map((food) => (
             <button
               key={food.id}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => handleSelectFood(food)}
-              className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+              className="w-full px-3 py-2 text-left hover:bg-blue-50 active:bg-blue-100 border-b border-gray-100 last:border-b-0 transition-colors"
             >
               <div className="font-medium text-gray-900 text-sm">{food.name}</div>
               <div className="text-xs text-gray-500">
@@ -979,8 +980,8 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd }
               }, 500)
             }}
             onBlur={() => {
-              // Delay hiding to allow click on suggestion
-              setTimeout(() => setShowSuggestions(false), 200)
+              // Longer delay on mobile to allow touch on suggestion
+              setTimeout(() => setShowSuggestions(false), 400)
             }}
             placeholder="Type food name or chat message..."
             className="flex-1 border border-gray-400 rounded-lg px-3 py-2 text-sm md:text-base text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
