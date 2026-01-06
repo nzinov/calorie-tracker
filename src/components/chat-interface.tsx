@@ -905,7 +905,7 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
           >
             ✕
           </button>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 w-0">
             <div className="font-medium text-gray-900 text-sm truncate">{selectedFood.name}</div>
             <div className="text-xs text-gray-600">{previewCalories} kcal</div>
           </div>

@@ -10,18 +10,22 @@ export function AuthButton() {
 
   if (process.env.NODE_ENV === 'development') {
     return (
-      <div className="flex items-center space-x-2">
-        <span className="text-sm text-gray-600">Dev Mode</span>
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
-          className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-400"
-          title="Open settings"
-        >
-          <span className="text-white text-sm font-medium">D</span>
-        </button>
+      <>
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            title="Open settings"
+            className="flex items-center space-x-2 focus:outline-none"
+          >
+            <span className="text-sm text-gray-600">Dev Mode</span>
+            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+              <span className="text-white text-sm font-medium">D</span>
+            </div>
+          </button>
+        </div>
         <UserSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      </div>
+      </>
     )
   }
 
@@ -35,40 +39,40 @@ export function AuthButton() {
 
   if (session?.user) {
     return (
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center space-x-2">
-          {session.user.image ? (
-            <button type="button" onClick={() => setSettingsOpen(true)} title="Open settings">
+      <>
+        <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            title="Open settings"
+            className="flex items-center space-x-2 focus:outline-none"
+          >
+            {session.user.image ? (
               <img
                 src={session.user.image}
                 alt={session.user.name || "User"}
                 className="w-8 h-8 rounded-full"
               />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              title="Open settings"
-              className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-400"
-            >
-              <span className="text-white text-sm font-medium">
-                {session.user.name?.[0]?.toUpperCase() || session.user.email?.[0]?.toUpperCase() || "U"}
-              </span>
-            </button>
-          )}
-          <span className="hidden sm:block text-sm font-medium text-gray-700">
-            {session.user.name || session.user.email}
-          </span>
+            ) : (
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm font-medium">
+                  {session.user.name?.[0]?.toUpperCase() || session.user.email?.[0]?.toUpperCase() || "U"}
+                </span>
+              </div>
+            )}
+            <span className="hidden sm:block text-sm font-medium text-gray-700">
+              {session.user.name || session.user.email}
+            </span>
+          </button>
+          <button
+            onClick={() => signOut()}
+            className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
+          >
+            Sign out
+          </button>
         </div>
-        <button
-          onClick={() => signOut()}
-          className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md text-gray-700 transition-colors"
-        >
-          Sign out
-        </button>
         <UserSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      </div>
+      </>
     )
   }
 
