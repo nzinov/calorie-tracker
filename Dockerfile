@@ -46,14 +46,10 @@ RUN adduser --system --uid 1001 nextjs
 # Copy public folder
 COPY --from=builder /app/public ./public
 
-# Copy Prisma schema, CLI, generated client, and all dependencies for migrate
+# Copy Prisma schema and generated client (migrations run separately)
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/effect ./node_modules/effect
-COPY --from=builder /app/node_modules/fast-check ./node_modules/fast-check
-COPY --from=builder /app/node_modules/pure-rand ./node_modules/pure-rand
 
 # Set the correct permission for prerender cache
 RUN mkdir .next
@@ -73,4 +69,5 @@ EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
-CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js migrate deploy --schema prisma/schema.postgres.prisma && node server.js"]
+# Note: Run migrations separately via `railway run npm run migrate:deploy`
+CMD ["node", "server.js"]
