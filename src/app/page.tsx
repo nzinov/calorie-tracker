@@ -136,7 +136,7 @@ export default function Home() {
   return (
     <AuthGuard>
       <div
-        className="bg-gray-100 flex flex-col md:h-screen"
+        className="bg-gray-100 flex flex-col md:h-screen overflow-hidden"
         style={{ height: viewportHeight ? `${viewportHeight}px` : '100dvh' }}
       >
         <header className="bg-white shadow-sm border-b flex-shrink-0">

@@ -24,39 +24,39 @@ export function NutritionDashboard({ data, compact = false }: NutritionDashboard
 
   if (compact) {
     const nutrients = [
-      { label: "Calories", current: data.calories, target: t.calories, unit: "", color: "bg-orange-500", textColor: "text-orange-600" },
-      { label: "Protein", current: data.protein, target: t.protein, unit: "g", color: "bg-red-500", textColor: "text-red-600" },
-      { label: "Carbs", current: data.carbs, target: t.carbs, unit: "g", color: "bg-yellow-500", textColor: "text-yellow-600" },
+      { label: "Cal", current: data.calories, target: t.calories, unit: "", color: "bg-orange-500", textColor: "text-orange-600" },
+      { label: "Pro", current: data.protein, target: t.protein, unit: "g", color: "bg-red-500", textColor: "text-red-600" },
+      { label: "Carb", current: data.carbs, target: t.carbs, unit: "g", color: "bg-yellow-500", textColor: "text-yellow-600" },
       { label: "Fat", current: data.fat, target: t.fat, unit: "g", color: "bg-purple-500", textColor: "text-purple-600" },
-      { label: "Fiber", current: data.fiber, target: t.fiber, unit: "g", color: "bg-green-500", textColor: "text-green-600" },
+      { label: "Fib", current: data.fiber, target: t.fiber, unit: "g", color: "bg-green-500", textColor: "text-green-600" },
       { label: "Salt", current: data.salt, target: t.salt, unit: "g", color: "bg-blue-500", textColor: "text-blue-600" },
     ]
 
     return (
       <div className="bg-white rounded-lg shadow-md p-3 h-full">
-        <div className="space-y-1">
+        <div className="grid gap-y-1" style={{ gridTemplateColumns: 'auto auto auto 1fr' }}>
           {nutrients.map((n) => {
             const percentage = Math.round((n.current / n.target) * 100)
             const isOver = n.current > n.target
             const remaining = n.target - n.current
             const remainingDisplay = Math.round(Math.abs(remaining))
             return (
-              <div key={n.label} className="flex items-center gap-2">
-                <span className={`text-xs font-semibold ${n.textColor} w-14 shrink-0`}>
+              <div key={n.label} className="contents">
+                <span className={`text-xs font-semibold ${n.textColor} pr-0.5`}>
                   {n.label}
                 </span>
-                <div className="flex-1 h-1.5 bg-gray-200 rounded-sm overflow-hidden">
+                <span className={`text-[11px] tabular-nums text-right pr-1 ${isOver ? "text-red-600" : "text-green-600"}`}>
+                  {isOver ? "+" : ""}{remainingDisplay}{n.unit} {isOver ? "over" : "left"}
+                </span>
+                <span className="bg-gray-100 text-gray-600 text-[10px] font-semibold py-0.5 px-1 rounded-sm text-center mr-1.5">
+                  {percentage}%
+                </span>
+                <div className="h-1.5 bg-gray-200 rounded-sm overflow-hidden self-center">
                   <div
                     className={`h-full rounded-sm ${isOver ? "bg-red-500" : n.color}`}
                     style={{ width: `${Math.min(percentage, 100)}%` }}
                   />
                 </div>
-                <span className={`text-xs tabular-nums w-14 text-right ${isOver ? "text-red-600" : "text-green-600"}`}>
-                  {isOver ? "+" : ""}{remainingDisplay}{n.unit} {isOver ? "over" : "left"}
-                </span>
-                <span className="bg-gray-100 text-gray-600 text-[10px] font-semibold py-0.5 pr-1 rounded-sm w-8 text-right">
-                  {percentage}%
-                </span>
               </div>
             )
           })}
