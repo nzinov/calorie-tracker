@@ -46,11 +46,14 @@ RUN adduser --system --uid 1001 nextjs
 # Copy public folder
 COPY --from=builder /app/public ./public
 
-# Copy Prisma schema, CLI, and generated client
+# Copy Prisma schema, CLI, generated client, and all dependencies for migrate
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/effect ./node_modules/effect
+COPY --from=builder /app/node_modules/fast-check ./node_modules/fast-check
+COPY --from=builder /app/node_modules/pure-rand ./node_modules/pure-rand
 
 # Set the correct permission for prerender cache
 RUN mkdir .next
