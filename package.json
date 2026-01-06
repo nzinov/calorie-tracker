@@ -6,8 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "node scripts/prisma-generate.js && next build",
     "start": "next start",
-    "db:push": "prisma db push --schema prisma/schema.prisma",
-    "migrate:deploy": "prisma migrate deploy --schema prisma/schema.postgres.prisma",
+    "db:push": "./node_modules/.bin/prisma db push --schema prisma/schema.prisma",
+    "migrate:deploy": "./node_modules/.bin/prisma migrate deploy --schema prisma/schema.postgres.prisma",
     "lint": "eslint",
     "postinstall": "echo 'skip prisma generate on postinstall'"
   },

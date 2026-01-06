@@ -15,4 +15,4 @@ const isPostgres = url.startsWith('postgresql://') || process.env.NODE_ENV === '
 const schema = isPostgres ? 'prisma/schema.postgres.prisma' : 'prisma/schema.prisma'
 
 console.log(`[prisma-generate] Using schema: ${schema}`)
-run(`npx prisma generate --schema ${schema}`)
+run(`./node_modules/.bin/prisma generate --schema ${schema}`)
