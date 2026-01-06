@@ -542,8 +542,6 @@ export async function POST(request: NextRequest) {
                 if (!entry) {
                   toolResult = `Error: Food entry not found.`
                 } else {
-                  const messages: string[] = []
-
                   // Check if nutritional info updates are provided
                   const nutritionUpdates: any = {}
                   if (parsedArgs.caloriesPer100g !== undefined) nutritionUpdates.caloriesPer100g = Number(parsedArgs.caloriesPer100g)
@@ -553,25 +551,26 @@ export async function POST(request: NextRequest) {
                   if (parsedArgs.fiberPer100g !== undefined) nutritionUpdates.fiberPer100g = Number(parsedArgs.fiberPer100g)
                   if (parsedArgs.saltPer100g !== undefined) nutritionUpdates.saltPer100g = Number(parsedArgs.saltPer100g)
 
+                  const hasNutritionUpdates = Object.keys(nutritionUpdates).length > 0
+                  const hasGramsUpdate = parsedArgs.grams !== undefined
+
                   // Update underlying food's nutritional info if any provided
-                  if (Object.keys(nutritionUpdates).length > 0) {
+                  if (hasNutritionUpdates) {
                     await prisma.userFood.update({
                       where: { id: entry.userFoodId },
                       data: nutritionUpdates
                     })
-                    messages.push(`Updated nutritional info for "${entry.userFood.name}".`)
                   }
 
                   // Update entry grams if provided
                   let updated = entry
-                  if (parsedArgs.grams !== undefined) {
+                  if (hasGramsUpdate) {
                     updated = await prisma.foodEntry.update({
                       where: { id: parsedArgs.id },
                       data: { grams: Number(parsedArgs.grams) },
                       include: { userFood: true }
                     })
-                    messages.push(`Updated amount from ${entry.grams}g to ${parsedArgs.grams}g.`)
-                  } else {
+                  } else if (hasNutritionUpdates) {
                     // Refetch to get updated userFood
                     updated = await prisma.foodEntry.findFirst({
                       where: { id: parsedArgs.id },
@@ -579,9 +578,18 @@ export async function POST(request: NextRequest) {
                     }) || entry
                   }
 
-                  const message = messages.length > 0
-                    ? `${entry.userFood.name}: ${messages.join(' ')}`
-                    : `No changes made to ${entry.userFood.name}.`
+                  // Build clean message
+                  const foodName = entry.userFood.name
+                  let message: string
+                  if (hasNutritionUpdates && hasGramsUpdate) {
+                    message = `Updated "${foodName}" (nutrition, ${entry.grams}g → ${parsedArgs.grams}g).`
+                  } else if (hasNutritionUpdates) {
+                    message = `Updated "${foodName}" nutrition info.`
+                  } else if (hasGramsUpdate) {
+                    message = `Updated "${foodName}" (${entry.grams}g → ${parsedArgs.grams}g).`
+                  } else {
+                    message = `No changes made to "${foodName}".`
+                  }
                   toolResult = await formatFoodOperationResult(message)
                   result.foodUpdated = updated
                 }

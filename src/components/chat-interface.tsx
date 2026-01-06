@@ -745,60 +745,14 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
             
             // Extract only the first line for display in the UI pill
             const firstLine = message.content.split('\n')[0]
-            
-            // Normalize nutritional lookup tool message and format values nicely in the pill
-            const rawText = message.content
-            const lower = rawText.toLowerCase()
-            const isNutritionalLookup = lower.startsWith("found nutritional information")
+            const isNutritionalLookup = firstLine.toLowerCase().startsWith("found nutritional information")
 
-            // Try to extract and format JSON payload if present
-            let displayText = firstLine  // Only show first line in UI
-            if (isNutritionalLookup) {
-              try {
-                const jsonStart = rawText.indexOf('{')
-                if (jsonStart !== -1) {
-                  const jsonStr = rawText.slice(jsonStart)
-                  const info = JSON.parse(jsonStr)
-                  const fmt = (v: any, digits = 1) => {
-                    const n = Number(v)
-                    if (!isFinite(n)) return null
-                    const rounded = Math.round(n * Math.pow(10, digits)) / Math.pow(10, digits)
-                    return Number.isInteger(rounded) ? String(rounded) : String(rounded)
-                  }
-
-                  // Supports new format only (per100g + portion)
-                  if (info && info.per100g && typeof info.per100g === 'object') {
-                    const p = info.per100g
-                    const parts: string[] = []
-                    if (p.calories != null) parts.push(`${fmt(p.calories, 0)} kcal/100g`)
-                    if (p.protein != null) parts.push(`Protein ${fmt(p.protein)}g/100g`)
-                    if (p.carbs != null) parts.push(`Carbs ${fmt(p.carbs)}g/100g`)
-                    if (p.fat != null) parts.push(`Fat ${fmt(p.fat)}g/100g`)
-                    if (p.fiber != null) parts.push(`Fiber ${fmt(p.fiber)}g/100g`)
-                    if (p.salt != null) parts.push(`Salt ${fmt(p.salt)}g/100g`)
-                    const portionBits: string[] = []
-                    if (info.portionSizeGrams != null) portionBits.push(`${fmt(info.portionSizeGrams, 0)}g`)
-                    if (info.portionDescription) portionBits.push(`(${info.portionDescription})`)
-                    const portionText = portionBits.length > 0 ? `Usual portion: ${portionBits.join(' ')}` : ''
-                    if (parts.length > 0) {
-                      displayText = `Nutritional info: ${portionText}${portionText ? ' • ' : ''}${parts.join(' • ')}`
-                    } else {
-                      displayText = "Successfully found nutritional information."
-                    }
-                  }
-                } else {
-                  displayText = "Successfully found nutritional information."
-                }
-              } catch {
-                displayText = "Successfully found nutritional information."
-              }
-            }
+            // Simplify nutritional lookup display
+            const displayText = isNutritionalLookup ? "Found nutritional info" : firstLine
 
             const getActionIcon = (text: string) => {
               const t = text.toLowerCase()
               if (t.includes("error")) return "❌"
-              // Nutritional lookup success
-              if (t.includes("found nutritional information") || t.startsWith("nutritional info:")) return "✅"
               if (t.includes("added")) return "✅"
               if (t.includes("updated")) return "✏️"
               if (t.includes("deleted")) return "🗑️"
