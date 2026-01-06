@@ -10,6 +10,8 @@ import { useDailyLog } from "@/hooks/use-daily-log"
 import { useUserSettings } from "@/contexts/user-settings"
 import { useState } from "react"
 
+type MobileTab = "log" | "items"
+
 export default function Home() {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date()
@@ -18,6 +20,7 @@ export default function Home() {
   const { data, loading, error, deleteFoodEntry, updateFoodEntry, addFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
   const { userFoods, fetchUserFoods } = useUserSettings()
   const [editingEntry, setEditingEntry] = useState<any>(null)
+  const [mobileTab, setMobileTab] = useState<MobileTab>("log")
 
   const handleDeleteEntry = async (id: string) => {
     try {
@@ -81,8 +84,8 @@ export default function Home() {
 
   return (
     <AuthGuard>
-      <div className="md:h-screen bg-gray-100 grid grid-rows-[auto_1fr]">
-        <header className="bg-white shadow-sm border-b">
+      <div className="h-screen bg-gray-100 flex flex-col">
+        <header className="bg-white shadow-sm border-b flex-shrink-0">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="py-4 grid grid-cols-2 items-center gap-3">
               <div className="flex items-center justify-start gap-3">
@@ -101,45 +104,102 @@ export default function Home() {
           </div>
         </header>
 
-      <main className="min-h-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full min-h-0 grid grid-rows-[auto_1fr] gap-6">
-          {/* Top section: Daily Progress and Food Log side by side - same height */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
-            <div className="lg:col-span-1 relative h-96">
-              {loading && (
-                <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                </div>
-              )}
-              <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }} />
-            </div>
+        {/* Mobile tabs - only visible on small screens */}
+        <div className="md:hidden bg-white border-b flex-shrink-0">
+          <div className="flex">
+            <button
+              onClick={() => setMobileTab("log")}
+              className={`flex-1 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                mobileTab === "log"
+                  ? "text-blue-600 border-blue-600"
+                  : "text-gray-500 border-transparent"
+              }`}
+            >
+              Log
+            </button>
+            <button
+              onClick={() => setMobileTab("items")}
+              className={`flex-1 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                mobileTab === "items"
+                  ? "text-blue-600 border-blue-600"
+                  : "text-gray-500 border-transparent"
+              }`}
+            >
+              Items ({data?.foodEntries?.length || 0})
+            </button>
+          </div>
+        </div>
 
-            <div className="lg:col-span-2 relative h-96">
-              {loading && (
-                <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                </div>
-              )}
-              <FoodEntryTable
-                entries={data?.foodEntries || []}
-                onEdit={handleEditEntry}
-                onDelete={handleDeleteEntry}
+        {/* Mobile layout */}
+        <main className="md:hidden flex-1 min-h-0 flex flex-col">
+          {/* Log tab - hidden when not active */}
+          <div className={`flex-1 min-h-0 flex flex-col p-4 gap-3 ${mobileTab !== "log" ? "hidden" : ""}`}>
+            <div className="flex-shrink-0">
+              <NutritionDashboard
+                data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }}
+                compact
+              />
+            </div>
+            <div className="flex-1 min-h-0">
+              <ChatInterface
+                onDataUpdate={(u) => applyDataUpdate(u)}
+                date={selectedDate}
+                userFoods={userFoods}
+                onQuickAdd={handleAddEntry}
+                onUserFoodCreated={fetchUserFoods}
               />
             </div>
           </div>
-
-          {/* Bottom section: Chat takes all remaining vertical space */}
-          <div className="h-96 md:min-h-0 md:h-full">
-            <ChatInterface
-              onDataUpdate={(u) => applyDataUpdate(u)}
-              date={selectedDate}
-              userFoods={userFoods}
-              onQuickAdd={handleAddEntry}
-              onUserFoodCreated={fetchUserFoods}
+          {/* Items tab - hidden when not active */}
+          <div className={`flex-1 min-h-0 p-4 ${mobileTab !== "items" ? "hidden" : ""}`}>
+            <FoodEntryTable
+              entries={data?.foodEntries || []}
+              onEdit={handleEditEntry}
+              onDelete={handleDeleteEntry}
             />
           </div>
-        </div>
-      </main>
+        </main>
+
+        {/* Desktop layout - hidden on mobile */}
+        <main className="hidden md:block flex-1 min-h-0">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full min-h-0 grid grid-rows-[auto_1fr] gap-6">
+            {/* Top section: Daily Progress and Food Log side by side */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+              <div className="lg:col-span-1 relative h-96">
+                {loading && (
+                  <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                  </div>
+                )}
+                <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }} />
+              </div>
+
+              <div className="lg:col-span-2 relative h-96">
+                {loading && (
+                  <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                  </div>
+                )}
+                <FoodEntryTable
+                  entries={data?.foodEntries || []}
+                  onEdit={handleEditEntry}
+                  onDelete={handleDeleteEntry}
+                />
+              </div>
+            </div>
+
+            {/* Bottom section: Chat takes all remaining vertical space */}
+            <div className="min-h-0 h-full">
+              <ChatInterface
+                onDataUpdate={(u) => applyDataUpdate(u)}
+                date={selectedDate}
+                userFoods={userFoods}
+                onQuickAdd={handleAddEntry}
+                onUserFoodCreated={fetchUserFoods}
+              />
+            </div>
+          </div>
+        </main>
       </div>
 
       {editingEntry && (

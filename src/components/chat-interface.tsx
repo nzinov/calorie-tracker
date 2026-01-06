@@ -316,42 +316,12 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
   }
 
 
-  const loadMessages = async () => {
-    if (!chatSessionId) return
-    try {
-      const params = date ? `?date=${date}` : ""
-      const res = await fetch(`/api/chat-sessions${params}`)
-      if (!res.ok) return
-      const sessions = await res.json()
-      if (sessions.length > 0) {
-        const session = sessions[0]
-        const serverMessages: ChatMessage[] = session.messages.map((m: any) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          toolCalls: m.toolCalls,
-          toolCallId: m.toolCallId,
-        }))
-        setMessages(serverMessages)
-        setHasLoadedInitialMessages(true)
-      }
-    } catch (e) {
-      console.error("Failed to load messages", e)
-    }
-  }
-
   useEffect(() => {
     // Reset when date changes
     setHasLoadedInitialMessages(false)
     setMessages([])
     loadChatSession()
   }, [date])
-
-  useEffect(() => {
-    if (chatSessionId && !hasLoadedInitialMessages) {
-      loadMessages()
-    }
-  }, [chatSessionId, hasLoadedInitialMessages])
 
   // Maintain a live SSE connection that streams new events from DB
   useEffect(() => {
@@ -398,7 +368,20 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
       if (res.ok) {
         const sessions = await res.json()
         if (sessions.length > 0) {
-          setChatSessionId(sessions[0].id)
+          const session = sessions[0]
+          setChatSessionId(session.id)
+          // Load messages from the same response
+          if (session.messages) {
+            const serverMessages: ChatMessage[] = session.messages.map((m: any) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              toolCalls: m.toolCalls,
+              toolCallId: m.toolCallId,
+            }))
+            setMessages(serverMessages)
+          }
+          setHasLoadedInitialMessages(true)
           return
         }
       }
