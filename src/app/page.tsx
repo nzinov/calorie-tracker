@@ -8,7 +8,7 @@ import { FoodEntryEditModal } from "@/components/food-entry-edit-modal"
 import { NutritionDashboard } from "@/components/nutrition-dashboard"
 import { useDailyLog } from "@/hooks/use-daily-log"
 import { useUserSettings } from "@/contexts/user-settings"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 
 type MobileTab = "log" | "items"
 
@@ -21,6 +21,57 @@ export default function Home() {
   const { userFoods, fetchUserFoods } = useUserSettings()
   const [editingEntry, setEditingEntry] = useState<any>(null)
   const [mobileTab, setMobileTab] = useState<MobileTab>("log")
+  const touchStartX = useRef<number | null>(null)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+
+  // Track visual viewport height for mobile keyboard handling
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const updateHeight = () => {
+      const vv = (window as any).visualViewport
+      if (vv) {
+        setViewportHeight(vv.height)
+      } else {
+        setViewportHeight(window.innerHeight)
+      }
+    }
+
+    updateHeight()
+
+    const vv = (window as any).visualViewport
+    if (vv) {
+      vv.addEventListener('resize', updateHeight)
+      vv.addEventListener('scroll', updateHeight)
+      return () => {
+        vv.removeEventListener('resize', updateHeight)
+        vv.removeEventListener('scroll', updateHeight)
+      }
+    } else {
+      window.addEventListener('resize', updateHeight)
+      return () => window.removeEventListener('resize', updateHeight)
+    }
+  }, [])
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return
+    const touchEndX = e.changedTouches[0].clientX
+    const diff = touchStartX.current - touchEndX
+    const minSwipeDistance = 50
+
+    if (Math.abs(diff) > minSwipeDistance) {
+      if (diff > 0 && mobileTab === "log") {
+        setMobileTab("items")
+      } else if (diff < 0 && mobileTab === "items") {
+        setMobileTab("log")
+      }
+    }
+    touchStartX.current = null
+  }
 
   const handleDeleteEntry = async (id: string) => {
     try {
@@ -84,7 +135,10 @@ export default function Home() {
 
   return (
     <AuthGuard>
-      <div className="h-screen bg-gray-100 flex flex-col">
+      <div
+        className="bg-gray-100 flex flex-col md:h-screen"
+        style={{ height: viewportHeight ? `${viewportHeight}px` : '100dvh' }}
+      >
         <header className="bg-white shadow-sm border-b flex-shrink-0">
           <div className="max-w-7xl mx-auto px-3 md:px-6 lg:px-8">
             <div className="py-1.5 md:py-4 grid grid-cols-2 items-center gap-2">
@@ -131,7 +185,11 @@ export default function Home() {
         </div>
 
         {/* Mobile layout */}
-        <main className="md:hidden flex-1 min-h-0 flex flex-col">
+        <main
+          className="md:hidden flex-1 min-h-0 flex flex-col"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           {/* Log tab - hidden when not active */}
           <div className={`flex-1 min-h-0 flex flex-col p-4 gap-3 ${mobileTab !== "log" ? "hidden" : ""}`}>
             <div className="flex-shrink-0">
