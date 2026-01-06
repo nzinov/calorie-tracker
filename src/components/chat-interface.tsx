@@ -308,6 +308,11 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
             if (evt.type === "message" && evt.message) {
               const incoming = evt.message as ChatMessage
               setMessages(prev => {
+                // Dedup by message ID - skip if we already have this message
+                if (incoming.id && prev.some(m => m.id === incoming.id)) {
+                  return prev
+                }
+
                 // Match saved user message to placeholder by content
                 if (incoming.role === 'user') {
                   for (let i = prev.length - 1; i >= 0; i--) {
