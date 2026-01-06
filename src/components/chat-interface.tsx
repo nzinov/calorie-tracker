@@ -56,10 +56,8 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
   const rootRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [cameraOpen, setCameraOpen] = useState(false)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const [showImageOptions, setShowImageOptions] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
 
   // Quick-add state
   const [selectedFood, setSelectedFood] = useState<UserFood | null>(null)
@@ -175,206 +173,6 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
       vv.removeEventListener('scroll', updateInset)
     }
   }, [])
-
-  // Ensure video element attaches to stream after modal renders
-  useEffect(() => {
-    if (!cameraOpen) return
-    const v = videoRef.current
-    const s = streamRef.current
-    if (v && s) {
-      try { (v as any).srcObject = s } catch {}
-      ;(async () => { try { await v.play() } catch {} })()
-    }
-    return () => {
-      if (v) {
-        try { (v as any).srcObject = null } catch {}
-      }
-    }
-  }, [cameraOpen])
-
-  // Cleanup camera on unmount
-  useEffect(() => {
-    return () => {
-      try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
-      streamRef.current = null
-      if (videoRef.current) {
-        try { (videoRef.current as any).srcObject = null } catch {}
-      }
-    }
-  }, [])
-
-  // Prefer camera on Android when available
-  const isAndroid = () => {
-    if (typeof navigator === 'undefined') return false
-    return /Android/i.test(navigator.userAgent)
-  }
-
-  const openCamera = async () => {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        fileInputRef.current?.click()
-        return
-      }
-
-      // First get permission with basic constraints to unlock device labels
-      let initialStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      })
-
-      // Now enumerate devices - labels should be available after permission
-      let selectedDeviceId: string | undefined
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const videoDevices = devices.filter(d => d.kind === 'videoinput')
-
-        // Log available cameras for debugging
-        console.log('Available cameras:', videoDevices.map(d => ({ id: d.deviceId.slice(0, 8), label: d.label })))
-
-        // On Android, camera "0" is typically the main/wide camera
-        // Look for: "camera2 0", "camera 0", or just "0" in the label
-        const mainCamera = videoDevices.find(d =>
-          /camera.*0|facing back.*0|back.*0/i.test(d.label)
-        )
-
-        // Fallback: find any back camera that's NOT telephoto
-        const nonTelephoto = videoDevices.find(d =>
-          /back|rear|environment/i.test(d.label) &&
-          !/tele|zoom|2x|3x|5x|10x/i.test(d.label)
-        )
-
-        selectedDeviceId = mainCamera?.deviceId || nonTelephoto?.deviceId
-        console.log('Selected camera:', selectedDeviceId ? videoDevices.find(d => d.deviceId === selectedDeviceId)?.label : 'default')
-      } catch (e) {
-        console.log('Could not enumerate devices', e)
-      }
-
-      // If we found a specific camera, stop initial stream and get the right one
-      let stream = initialStream
-      if (selectedDeviceId) {
-        initialStream.getTracks().forEach(t => t.stop())
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: { exact: selectedDeviceId },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        })
-      }
-
-      // Try to set zoom to minimum after getting stream
-      const track = stream.getVideoTracks()[0]
-      if (track) {
-        try {
-          const capabilities = track.getCapabilities() as any
-          console.log('Camera capabilities:', { zoom: capabilities?.zoom, label: track.label })
-          if (capabilities?.zoom) {
-            const minZoom = capabilities.zoom.min || 1
-            await track.applyConstraints({ advanced: [{ zoom: minZoom }] } as any)
-            console.log('Set zoom to:', minZoom)
-          }
-        } catch (e) {
-          console.log('Zoom control not supported', e)
-        }
-      }
-
-      streamRef.current = stream
-      if (videoRef.current) {
-        try { (videoRef.current as any).srcObject = stream } catch {}
-        try { await videoRef.current.play() } catch {}
-      }
-      setCameraOpen(true)
-    } catch (err) {
-      console.error('Failed to open camera', err)
-      fileInputRef.current?.click()
-    }
-  }
-
-  const closeCamera = () => {
-    try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
-    streamRef.current = null
-    if (videoRef.current) {
-      try { (videoRef.current as any).srcObject = null } catch {}
-    }
-    setCameraOpen(false)
-  }
-
-  // Wait until video has non-zero dimensions (up to a short timeout)
-  const waitForVideoDimensions = async (video: HTMLVideoElement, timeoutMs = 3000) => {
-    if (video.videoWidth && video.videoHeight) return
-    const start = Date.now()
-    await new Promise<void>((resolve) => {
-      const tick = () => {
-        if (video.videoWidth && video.videoHeight) return resolve()
-        if (Date.now() - start > timeoutMs) return resolve()
-        requestAnimationFrame(tick)
-      }
-      tick()
-    })
-  }
-
-  const capturePhotoFromStream = async () => {
-    const video = videoRef.current
-    if (!video) return
-    // Wait for metadata so dimensions are available
-    if (video.readyState < 2) {
-      await new Promise<void>((resolve) => {
-        const handler = () => { resolve(); video.removeEventListener('loadedmetadata', handler) }
-        video.addEventListener('loadedmetadata', handler)
-      })
-    }
-    await waitForVideoDimensions(video)
-    const vw = video.videoWidth || 0
-    const vh = video.videoHeight || 0
-
-    // Fallback to ImageCapture API if available and dimensions still zero
-    if ((!vw || !vh) && streamRef.current) {
-      try {
-        const track = streamRef.current.getVideoTracks()[0]
-        const ImageCaptureCtor = (window as any).ImageCapture
-        if (track && ImageCaptureCtor) {
-          const ic = new ImageCaptureCtor(track)
-          const blob: Blob = await ic.takePhoto()
-          const file = new File([blob], 'camera.jpg', { type: blob.type || 'image/jpeg' })
-          const dataUrl = await compressImageToDataUrl(file)
-          setImageDataUrl(dataUrl)
-          setImageName('camera.jpg')
-          closeCamera()
-          return
-        }
-      } catch (e) {
-        console.warn('ImageCapture fallback failed', e)
-      }
-    }
-
-    if (!vw || !vh) {
-      alert('Camera not ready. Please try capturing again.')
-      return
-    }
-    const MAX_SIDE = 1280
-    const TARGET_BYTES = 900 * 1024
-    const MIN_QUALITY = 0.5
-    const scale = Math.min(1, MAX_SIDE / Math.max(vw, vh))
-    const width = Math.round(vw * scale)
-    const height = Math.round(vh * scale)
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const ctx = canvas.getContext('2d')!
-    ctx.drawImage(video, 0, 0, width, height)
-    let quality = 0.8
-    let dataUrl = canvas.toDataURL('image/jpeg', quality)
-    let byteLength = Math.ceil((dataUrl.length * 3) / 4)
-    while (byteLength > TARGET_BYTES && quality > MIN_QUALITY) {
-      quality -= 0.1
-      dataUrl = canvas.toDataURL('image/jpeg', quality)
-      byteLength = Math.ceil((dataUrl.length * 3) / 4)
-    }
-    setImageDataUrl(dataUrl)
-    setImageName('camera.jpg')
-    closeCamera()
-  }
 
 
   useEffect(() => {
@@ -975,7 +773,7 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
                 <button
                   onClick={() => {
                     setShowImageOptions(false)
-                    openCamera()
+                    cameraInputRef.current?.click()
                   }}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
                 >
@@ -1004,6 +802,27 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              className="sr-only"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                setImageName(file.name)
+                try {
+                  const dataUrl = await compressImageToDataUrl(file)
+                  setImageDataUrl(dataUrl)
+                } catch (err) {
+                  console.error('Failed to process image', err)
+                  alert('Failed to process the image. Please try another file.')
+                  e.currentTarget.value = ""
+                }
+              }}
+              disabled={loading}
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
               className="sr-only"
               onChange={async (e) => {
                 const file = e.target.files?.[0]
@@ -1053,35 +872,6 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
           >
             Send
           </button>
-        </div>
-      )}
-
-
-      {cameraOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="bg-black p-2 rounded-lg w-full max-w-sm mx-4">
-            <video
-              ref={videoRef}
-              className="w-full h-auto rounded"
-              autoPlay
-              playsInline
-              muted
-            />
-            <div className="mt-2 flex justify-between">
-              <button
-                className="bg-white text-black px-3 py-2 rounded"
-                onClick={capturePhotoFromStream}
-              >
-                Capture
-              </button>
-              <button
-                className="text-white px-3 py-2"
-                onClick={closeCamera}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
