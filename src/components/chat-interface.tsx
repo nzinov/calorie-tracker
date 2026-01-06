@@ -216,9 +216,24 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
         return
       }
 
+      // Try to find the main back camera (not telephoto)
+      let deviceId: string | undefined
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter(d => d.kind === 'videoinput')
+        // Find back camera that's NOT telephoto/zoom
+        const mainBackCamera = videoDevices.find(d =>
+          /back|rear|environment/i.test(d.label) &&
+          !/tele|zoom|2x|3x|5x|10x/i.test(d.label)
+        )
+        deviceId = mainBackCamera?.deviceId
+      } catch (e) {
+        console.log('Could not enumerate devices', e)
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: 'environment' },
+          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }),
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
@@ -830,6 +845,26 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
           </div>
         )}
 
+        {imageDataUrl && (
+          <div className="sticky bottom-0 left-0 pb-2 pt-1">
+            <div className="inline-flex items-center gap-2 bg-gray-200 rounded-lg p-2 pr-3 shadow-md">
+              <img src={imageDataUrl} alt="Selected" className="h-12 w-12 object-cover rounded-md" />
+              <span className="text-sm text-gray-600">Photo attached</span>
+              <button
+                onClick={() => {
+                  setImageDataUrl(null)
+                  setImageName(null)
+                }}
+                className="ml-1 text-gray-400 hover:text-red-500 transition-colors"
+                title="Remove photo"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -996,20 +1031,6 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
         </div>
       )}
 
-      {imageDataUrl && (
-        <div className="mt-2 flex items-center gap-2">
-          <img src={imageDataUrl} alt="Selected" className="h-16 w-16 object-cover rounded border" />
-          <button
-            className="text-xs text-red-600 hover:underline"
-            onClick={() => {
-              setImageDataUrl(null)
-              setImageName(null)
-            }}
-          >
-            Remove photo
-          </button>
-        </div>
-      )}
 
       {cameraOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
