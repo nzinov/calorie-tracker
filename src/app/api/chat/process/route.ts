@@ -481,6 +481,7 @@ export async function POST(request: NextRequest) {
                   }
                 })
                 toolResult = `Added "${newFood.name}" to your food database.\nFood ID: ${newFood.id}. You can now use add_food_entry with this ID.`
+                result.userFoodCreated = newFood
                 break
               }
               case 'update_food': {
@@ -615,7 +616,7 @@ export async function POST(request: NextRequest) {
 
           const savedTool = await saveMessageToDb(chatSessionId, 'tool', toolResult, null, toolCallId)
           await createChatEvent(chatSessionId, 'message', { type: 'message', message: { id: savedTool?.id, role: 'tool', content: toolResult, toolCalls: null, toolCallId: toolCallId } })
-          if (result.foodAdded || result.foodUpdated || result.foodDeleted) {
+          if (result.foodAdded || result.foodUpdated || result.foodDeleted || result.userFoodCreated) {
             await createChatEvent(chatSessionId, 'data_changed', { type: 'data_changed', data: result, targetDate: dateStr })
           }
 

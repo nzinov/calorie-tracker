@@ -16,7 +16,7 @@ export default function Home() {
     return today.toISOString().split('T')[0]
   })
   const { data, loading, error, deleteFoodEntry, updateFoodEntry, addFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
-  const { userFoods } = useUserSettings()
+  const { userFoods, fetchUserFoods } = useUserSettings()
   const [editingEntry, setEditingEntry] = useState<any>(null)
 
   const handleDeleteEntry = async (id: string) => {
@@ -135,6 +135,7 @@ export default function Home() {
               date={selectedDate}
               userFoods={userFoods}
               onQuickAdd={handleAddEntry}
+              onUserFoodCreated={fetchUserFoods}
             />
           </div>
         </div>

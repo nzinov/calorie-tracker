@@ -39,9 +39,10 @@ interface ChatInterfaceProps {
   date: string
   userFoods?: UserFood[]
   onQuickAdd?: (entry: { userFoodId: string; grams: number }) => Promise<void>
+  onUserFoodCreated?: () => void
 }
 
-export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd }: ChatInterfaceProps) {
+export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, onUserFoodCreated }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -532,6 +533,10 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd }
                 } else if (evt.data.foodDeleted) {
                   onDataUpdate({ foodDeleted: evt.data.foodDeleted })
                 }
+              }
+              // Refresh userFoods when a new food is created
+              if (evt.data.userFoodCreated && onUserFoodCreated) {
+                onUserFoodCreated()
               }
             }
             if (evt.type === "completed") {
