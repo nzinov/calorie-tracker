@@ -86,15 +86,15 @@ export default function Home() {
     <AuthGuard>
       <div className="h-screen bg-gray-100 flex flex-col">
         <header className="bg-white shadow-sm border-b flex-shrink-0">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="py-4 grid grid-cols-2 items-center gap-3">
-              <div className="flex items-center justify-start gap-3">
-                <h1 className="hidden md:block text-2xl font-bold text-gray-900">Calorie Tracker</h1>
+          <div className="max-w-7xl mx-auto px-3 md:px-6 lg:px-8">
+            <div className="py-1.5 md:py-4 grid grid-cols-2 items-center gap-2">
+              <div className="flex items-center justify-start">
+                <h1 className="hidden md:block text-2xl font-bold text-gray-900 mr-3">Calorie Tracker</h1>
                 <input
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-1 border text-gray-700 border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-auto"
+                  className="px-1.5 py-0.5 md:px-3 md:py-1 border text-gray-700 border-gray-300 rounded text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-auto"
                 />
               </div>
               <div className="flex items-center justify-end">
