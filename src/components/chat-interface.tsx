@@ -216,38 +216,63 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
         return
       }
 
-      // Try to find the main back camera (not telephoto)
-      let deviceId: string | undefined
+      // First get permission with basic constraints to unlock device labels
+      let initialStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+
+      // Now enumerate devices - labels should be available after permission
+      let selectedDeviceId: string | undefined
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()
         const videoDevices = devices.filter(d => d.kind === 'videoinput')
-        // Find back camera that's NOT telephoto/zoom
-        const mainBackCamera = videoDevices.find(d =>
+
+        // Log available cameras for debugging
+        console.log('Available cameras:', videoDevices.map(d => ({ id: d.deviceId.slice(0, 8), label: d.label })))
+
+        // On Android, camera "0" is typically the main/wide camera
+        // Look for: "camera2 0", "camera 0", or just "0" in the label
+        const mainCamera = videoDevices.find(d =>
+          /camera.*0|facing back.*0|back.*0/i.test(d.label)
+        )
+
+        // Fallback: find any back camera that's NOT telephoto
+        const nonTelephoto = videoDevices.find(d =>
           /back|rear|environment/i.test(d.label) &&
           !/tele|zoom|2x|3x|5x|10x/i.test(d.label)
         )
-        deviceId = mainBackCamera?.deviceId
+
+        selectedDeviceId = mainCamera?.deviceId || nonTelephoto?.deviceId
+        console.log('Selected camera:', selectedDeviceId ? videoDevices.find(d => d.deviceId === selectedDeviceId)?.label : 'default')
       } catch (e) {
         console.log('Could not enumerate devices', e)
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }),
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      })
+      // If we found a specific camera, stop initial stream and get the right one
+      let stream = initialStream
+      if (selectedDeviceId) {
+        initialStream.getTracks().forEach(t => t.stop())
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: selectedDeviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        })
+      }
 
       // Try to set zoom to minimum after getting stream
       const track = stream.getVideoTracks()[0]
       if (track) {
         try {
           const capabilities = track.getCapabilities() as any
+          console.log('Camera capabilities:', { zoom: capabilities?.zoom, label: track.label })
           if (capabilities?.zoom) {
             const minZoom = capabilities.zoom.min || 1
             await track.applyConstraints({ advanced: [{ zoom: minZoom }] } as any)
+            console.log('Set zoom to:', minZoom)
           }
         } catch (e) {
           console.log('Zoom control not supported', e)
