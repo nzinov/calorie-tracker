@@ -730,6 +730,18 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
             <div className="font-medium text-gray-900 text-sm truncate">{selectedFood.name}</div>
             <div className="text-xs text-gray-600">{previewCalories} kcal</div>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              const portion = selectedFood.defaultGrams || 50
+              const current = parseFloat(quickAddGrams) || 0
+              setQuickAddGrams(Math.max(0, current - portion).toString())
+            }}
+            disabled={quickAdding}
+            className="px-1.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 text-xs font-medium flex-shrink-0 disabled:opacity-50"
+          >
+            −{selectedFood.defaultGrams || 50}
+          </button>
           <input
             ref={gramsInputRef}
             type="number"
@@ -745,10 +757,22 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
                 } catch {}
               }, 500)
             }}
-            placeholder="grams"
-            className="w-16 md:w-20 px-2 py-1.5 border border-gray-300 rounded-md text-center text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="g"
+            className="w-12 md:w-16 px-1 py-1.5 border border-gray-300 rounded-md text-center text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={quickAdding}
           />
+          <button
+            type="button"
+            onClick={() => {
+              const portion = selectedFood.defaultGrams || 50
+              const current = parseFloat(quickAddGrams) || 0
+              setQuickAddGrams((current + portion).toString())
+            }}
+            disabled={quickAdding}
+            className="px-1.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 text-xs font-medium flex-shrink-0 disabled:opacity-50"
+          >
+            +{selectedFood.defaultGrams || 50}
+          </button>
           <button
             onClick={handleQuickAddSubmit}
             disabled={quickAdding || !quickAddGrams || parseFloat(quickAddGrams) <= 0}
