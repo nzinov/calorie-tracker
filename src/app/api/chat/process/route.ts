@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
                 fiberPer100g: { type: 'number', description: 'Fiber in grams per 100g' },
                 saltPer100g: { type: 'number', description: 'Salt in grams per 100g' },
                 defaultGrams: { type: 'number', description: 'Default portion size in grams (optional)' },
-                comments: { type: 'string', description: 'Additional notes like portion descriptions, brand info, etc. (optional)' }
+                comments: { type: 'string', description: 'Additional notes like portion descriptions, brand info, etc. (optional, you can leave it empty)' }
               },
               required: ['name', 'caloriesPer100g', 'proteinPer100g', 'carbsPer100g', 'fatPer100g', 'fiberPer100g', 'saltPer100g']
             }

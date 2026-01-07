@@ -12,22 +12,15 @@ export function ProgressBar({ label, current, target, unit, color = "bg-blue-500
   const isOverTarget = current > target
 
   if (compact) {
+    // Just the bar, no text - used in two-column layout
     return (
-      <div className="space-y-0.5">
-        <div className="flex justify-between items-center">
-          <span className="text-xs font-medium text-gray-800">{label}</span>
-          <span className={`text-xs font-medium ${isOverTarget ? "text-red-700" : "text-gray-600"}`}>
-            {Math.round(current)}/{target}
-          </span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all duration-300 ${
-              isOverTarget ? "bg-red-500" : color
-            }`}
-            style={{ width: `${Math.min(percentage, 100)}%` }}
-          />
-        </div>
+      <div className="w-full bg-gray-200 rounded-full h-4">
+        <div
+          className={`h-4 rounded-full transition-all duration-300 ${
+            isOverTarget ? "bg-red-500" : color
+          }`}
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
       </div>
     )
   }

@@ -162,17 +162,41 @@ export function FoodEntryEditModal({ entry, onUpdate, onDelete, onClose }: FoodE
           </div>
 
           {/* Grams input */}
-          <label className="block text-sm text-gray-900">
+          <div className="block text-sm text-gray-900">
             <span className="block text-gray-900 mb-1">Amount (grams)</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={grams}
-              onChange={e => setGrams(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900 text-lg"
-            />
-          </label>
+            <div className="flex gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  const portion = entry.userFood.defaultGrams || 50
+                  const current = parseFloat(grams) || 0
+                  setGrams(Math.max(0, current - portion).toString())
+                }}
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium"
+              >
+                −{entry.userFood.defaultGrams || 50}
+              </button>
+              <input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={grams}
+                onChange={e => setGrams(e.target.value)}
+                className="flex-1 border border-gray-300 rounded px-3 py-2 text-gray-900 text-lg text-center"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const portion = entry.userFood.defaultGrams || 50
+                  const current = parseFloat(grams) || 0
+                  setGrams((current + portion).toString())
+                }}
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium"
+              >
+                +{entry.userFood.defaultGrams || 50}
+              </button>
+            </div>
+          </div>
 
           {/* Preview nutrition */}
           <div className="bg-blue-50 rounded-lg p-3 text-sm">
