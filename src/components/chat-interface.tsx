@@ -67,6 +67,9 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
   const gramsInputRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Search results modal state (for viewing tool message content directly)
+  const [searchResultsContent, setSearchResultsContent] = useState<string | null>(null)
+
   // Fuzzy search for quick-add
   const fuse = useMemo(() => {
     return new Fuse(userFoods, {
@@ -550,52 +553,21 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
     <div className="bg-white rounded-lg shadow-md p-3 md:p-4 h-full flex flex-col" ref={chatRef}>
       <div className="flex-1 overflow-y-auto space-y-2" ref={messagesContainerRef}>
         {messages.map((message, index) => {
-          // Show a pill as soon as the assistant announces the lookup tool call
-          if (message.role === 'assistant' && message.toolCalls) {
-            try {
-              const calls = JSON.parse(message.toolCalls as any)
-              if (Array.isArray(calls)) {
-                const lookupCall = calls.find((c: any) => {
-                  const fn = c?.function || c?.["function_call"]
-                  return fn && fn.name === 'lookup_nutritional_info'
-                })
-                if (lookupCall) {
-                  let desc: string | null = null
-                  try {
-                    const fn = lookupCall.function || lookupCall["function_call"]
-                    const argStr = fn?.arguments || fn?.args
-                    if (typeof argStr === 'string' && argStr.trim().length > 0) {
-                      const parsed = JSON.parse(argStr)
-                      if (parsed && typeof parsed.foodDescription === 'string' && parsed.foodDescription.trim().length > 0) {
-                        desc = parsed.foodDescription.trim()
-                      }
-                    }
-                  } catch {}
-
-                  return (
-                    <div key={index} className="flex justify-start mt-2">
-                      <div className="flex flex-wrap gap-2 max-w-2xl">
-                        <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm border-blue-300 bg-blue-100 text-blue-800`}>
-                          <span className="mr-1.5">🔎</span>
-                          {desc ? `Looking up: ${desc}` : 'Looking up nutritional information…'}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                }
-              }
-            } catch {}
-          }
           if (message.role === "tool") {
             // Display tool message as a pill
             if (!message.content) return null
-            
+
             // Extract only the first line for display in the UI pill
             const firstLine = message.content.split('\n')[0]
-            const isNutritionalLookup = firstLine.toLowerCase().startsWith("found nutritional information")
+            const isSearchResult = firstLine.toLowerCase().startsWith("search results for")
 
-            // Simplify nutritional lookup display
-            const displayText = isNutritionalLookup ? "Found nutritional info" : firstLine
+            // Simplify display text
+            let displayText = firstLine
+            if (isSearchResult) {
+              // Extract the query from "Search results for "query":"
+              const match = firstLine.match(/search results for "([^"]+)"/i)
+              displayText = match ? `Search: ${match[1]}` : "Search results"
+            }
 
             const getActionIcon = (text: string) => {
               const t = text.toLowerCase()
@@ -612,14 +584,27 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
               if (t.includes("updated")) return "border-blue-300 bg-blue-100 text-blue-800"
               return "border-emerald-300 bg-emerald-100 text-emerald-800"
             }
-            
+
             return (
               <div key={index} className="flex justify-start mt-2">
-                <div className="flex flex-wrap gap-2 max-w-2xl">
-                  <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${getActionColor(displayText)}`}>
-                    <span className="mr-1.5">{isNutritionalLookup ? "✅" : getActionIcon(displayText)}</span>
+                <div className="flex items-center gap-1.5 max-w-2xl">
+                  <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${isSearchResult ? 'border-purple-300 bg-purple-100 text-purple-800' : getActionColor(displayText)}`}>
+                    <span className="mr-1.5">{isSearchResult ? "🔍" : getActionIcon(displayText)}</span>
                     {displayText}
                   </span>
+                  {/* Button to view full search results */}
+                  {isSearchResult && (
+                    <button
+                      onClick={() => setSearchResultsContent(message.content)}
+                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                      title="View full search results"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -630,7 +615,7 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
             <div key={index}>
               {!(message.role === 'assistant' && (!message.content || message.content.trim().length === 0)) && (
                 <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className="flex items-start gap-2 max-w-2xl">
+                  <div className="flex items-start gap-1.5 max-w-2xl">
                     <div
                       className={`px-4 py-2 rounded-lg ${
                         message.role === "user"
@@ -901,6 +886,46 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
           >
             Send
           </button>
+        </div>
+      )}
+
+      {/* Search Results Modal */}
+      {searchResultsContent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span>🔍</span> Search Results
+              </h2>
+              <button
+                onClick={() => setSearchResultsContent(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold w-8 h-8 flex items-center justify-center"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              <pre className="text-sm text-gray-800 whitespace-pre-wrap font-sans">
+                {searchResultsContent}
+              </pre>
+            </div>
+            <div className="border-t p-4 flex justify-end gap-2 flex-shrink-0">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(searchResultsContent)
+                }}
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded hover:bg-gray-200 transition-colors text-sm"
+              >
+                Copy
+              </button>
+              <button
+                onClick={() => setSearchResultsContent(null)}
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

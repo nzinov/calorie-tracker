@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (process.env.NODE_ENV !== 'development' && !(session as any)?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -31,7 +31,8 @@ export async function GET(
         content: true,
         timestamp: true,
         toolCalls: true,
-        toolCallId: true
+        toolCallId: true,
+        chatSessionId: true
       }
     })
 
@@ -50,8 +51,42 @@ export async function GET(
       )
     }
 
+    // Get tool call IDs from this assistant message
+    let toolCallIds: string[] = []
+    if (message.toolCalls) {
+      try {
+        const calls = JSON.parse(message.toolCalls)
+        if (Array.isArray(calls)) {
+          toolCallIds = calls.map((c: any) => c.id).filter(Boolean)
+        }
+      } catch {}
+    }
+
+    // Fetch associated tool messages (search results, etc.)
+    let searchResults: Array<{ toolCallId: string; content: string; isSearchResult: boolean }> = []
+    if (toolCallIds.length > 0) {
+      const toolMessages = await prisma.chatMessage.findMany({
+        where: {
+          chatSessionId: message.chatSessionId,
+          role: 'tool',
+          toolCallId: { in: toolCallIds }
+        },
+        select: {
+          toolCallId: true,
+          content: true
+        }
+      })
+
+      searchResults = toolMessages.map(tm => ({
+        toolCallId: tm.toolCallId || '',
+        content: tm.content || '',
+        isSearchResult: (tm.content || '').toLowerCase().includes('search results')
+      }))
+    }
+
     return NextResponse.json({
       messageId: message.id,
+      searchResults,
       debugData: {
         toolCalls: message.toolCalls,
         toolCallId: message.toolCallId
