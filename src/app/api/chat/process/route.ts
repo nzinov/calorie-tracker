@@ -2,7 +2,7 @@ import { authOptions } from "@/lib/auth"
 import { DAILY_TARGETS } from "@/lib/constants"
 import { db as prisma } from "@/lib/db"
 import { createChatEvent } from "@/lib/events"
-import { lookupNutritionalInfo } from "@/lib/food"
+import { webSearch } from "@/lib/food"
 import { readFileSync } from "fs"
 import { getServerSession } from "next-auth/next"
 import { NextRequest, NextResponse } from "next/server"
@@ -51,7 +51,7 @@ IMPORTANT: Always try to estimate calories and nutritional values when users des
 
 Be reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging. Do not ask for confirmations of your actions unless absolutely necessary.
 
-If a food is not in the database and you need information from the web to estimate its nutritional values (e.g. it's some specific brand), use the lookup_nutritional_info tool to get accurate data from web sources before creating the food.
+If a food is not in the database and you need information from the web to estimate its nutritional values (e.g. it's some specific brand), use the web_search tool to get accurate data from web sources before creating the food.
 
 METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible.
 
@@ -316,26 +316,26 @@ export async function POST(request: NextRequest) {
             }
           }
         },
-        // Lookup nutritional info from web
+        // Web search for information
         {
           type: 'function',
           function: {
-            name: 'lookup_nutritional_info',
-            description: 'Look up nutritional information using web search. Use this for specific brands or foods not in your knowledge.',
+            name: 'web_search',
+            description: 'Search the web for information. Use for looking up nutritional info, brands, or any other factual data.',
             parameters: {
               type: 'object',
               properties: {
-                foodDescription: { type: 'string', description: 'Description of the food to look up' }
+                query: { type: 'string', description: 'Search query' }
               },
-              required: ['foodDescription']
+              required: ['query']
             }
           }
         },
       ]
 
-      const model = 'gpt-5-mini'
+      const model = 'google/gemini-3-flash-preview'
 
-      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'low' } }
+      const requestPayload = { model, messages: builtMessages, tools, temperature: 0.3, reasoning: { effort: 'low' } }
 
       await createChatEvent(chatSessionId, 'status', { type: 'status', message: 'Processing your request...' })
 
@@ -591,9 +591,9 @@ export async function POST(request: NextRequest) {
                 }
                 break
               }
-              case 'lookup_nutritional_info': {
-                const nutritionalInfo = await lookupNutritionalInfo(parsedArgs.foodDescription)
-                toolResult = `Found nutritional information for "${parsedArgs.foodDescription}".\n${JSON.stringify(nutritionalInfo)}`
+              case 'web_search': {
+                const results = await webSearch(parsedArgs.query)
+                toolResult = `Search results for "${parsedArgs.query}":\n\n${results}`
                 break
               }
               default:
@@ -614,7 +614,7 @@ export async function POST(request: NextRequest) {
 
         // Add tool results to conversation and request next round
         builtMessages.push(...toolMessages)
-        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'minimal' } }
+        const followupPayload = { model, messages: builtMessages, tools, temperature: 0.3, reasoning: { effort: 'minimal' } }
 
         const follow = await fetch(OPENROUTER_API_URL, {
           method: 'POST',
