@@ -94,15 +94,6 @@ Important: Do not reply with free-form text. Call the tool \"nutrition_lookup_re
       ]
     }
 
-    // Log full lookup request (sanitized)
-    try {
-      console.log('=== LOOKUP REQUEST ===')
-      console.log('Timestamp:', new Date().toISOString())
-      console.log('Model:', MODEL)
-      console.log('Prompt:', prompt)
-      console.log('Request Payload:', JSON.stringify(reqBody, null, 2))
-    } catch {}
-
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -114,14 +105,6 @@ Important: Do not reply with free-form text. Call the tool \"nutrition_lookup_re
       body: JSON.stringify(reqBody)
     })
 
-    // Verbose logging of provider response (status + headers)
-    try {
-      console.log('[lookup] OpenRouter status:', response.status, response.statusText)
-      const hdrs: Record<string, string> = {}
-      response.headers.forEach((v, k) => { hdrs[k] = v })
-      console.log('[lookup] OpenRouter headers:', JSON.stringify(hdrs, null, 2))
-    } catch {}
-
     if (!response.ok) {
       let errBody: any = null
       try { errBody = await response.json() } catch { try { errBody = await response.text() } catch {} }
@@ -130,7 +113,6 @@ Important: Do not reply with free-form text. Call the tool \"nutrition_lookup_re
     }
 
     const data = await response.json()
-    try { console.log('[lookup] OpenRouter response body:', JSON.stringify(data, null, 2)) } catch {}
 
     const message = data.choices?.[0]?.message
     if (!message) {

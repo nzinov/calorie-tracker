@@ -339,16 +339,6 @@ export async function POST(request: NextRequest) {
 
       await createChatEvent(chatSessionId, 'status', { type: 'status', message: 'Processing your request...' })
 
-      // Log full initial request to OpenRouter (sanitized)
-      try {
-        console.log("=== LLM REQUEST (BG PROCESS) ===")
-        console.log("Timestamp:", new Date().toISOString())
-        console.log("Chat Session ID:", chatSessionId)
-        console.log("User Message:", uiContent)
-        console.log("System Message:", systemContent)
-        console.log("Full Messages Array:", JSON.stringify(builtMessages, null, 2))
-        console.log("Request Payload:", JSON.stringify({ ...requestPayload, api_key: undefined }, null, 2))
-      } catch {}
 
       const resp = await fetch(OPENROUTER_API_URL, {
         method: 'POST',
@@ -370,16 +360,7 @@ export async function POST(request: NextRequest) {
         return
       }
 
-      // Log response meta
-      try {
-        console.log("[BG] OpenRouter status:", resp.status, resp.statusText)
-        const hdrs: Record<string, string> = {}
-        resp.headers.forEach((v, k) => { hdrs[k] = v })
-        console.log("[BG] OpenRouter headers:", JSON.stringify(hdrs, null, 2))
-      } catch {}
-
       const data = await resp.json()
-      try { console.log("[BG] OpenRouter response body:", JSON.stringify(data, null, 2)) } catch {}
       let currentMessage = data.choices?.[0]?.message
       if (!currentMessage) {
         await createChatEvent(chatSessionId, 'error', { type: 'error', error: 'No response from AI' })
@@ -635,14 +616,6 @@ export async function POST(request: NextRequest) {
         builtMessages.push(...toolMessages)
         const followupPayload = { model, messages: builtMessages, tools, temperature: 0.7, reasoning: { effort: 'minimal' } }
 
-        // Log follow-up request payload
-        try {
-          console.log("=== FOLLOW-UP REQUEST (BG) ===")
-          console.log("Timestamp:", new Date().toISOString())
-          console.log("Round:", roundCount + 1)
-          console.log("Follow-up Messages Array:", JSON.stringify(builtMessages, null, 2))
-        } catch {}
-
         const follow = await fetch(OPENROUTER_API_URL, {
           method: 'POST',
           headers: {
@@ -661,14 +634,7 @@ export async function POST(request: NextRequest) {
           await createChatEvent(chatSessionId, 'completed', { type: 'completed' })
           return
         }
-        try {
-          console.log("[BG] Follow-up status:", follow.status, follow.statusText)
-          const fh: Record<string, string> = {}
-          follow.headers.forEach((v, k) => { fh[k] = v })
-          console.log("[BG] Follow-up headers:", JSON.stringify(fh, null, 2))
-        } catch {}
         const followData = await follow.json()
-        try { console.log("[BG] Follow-up response body:", JSON.stringify(followData, null, 2)) } catch {}
         currentMessage = followData.choices?.[0]?.message
         roundCount++
       }

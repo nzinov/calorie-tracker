@@ -72,8 +72,6 @@ export async function GET(request: NextRequest) {
     // Calculate totals
     const totals = calculateTotals(foodEntries)
 
-    console.log('daily-logs', startDate, userId, totals)
-
     return NextResponse.json({
       date: startDate.toISOString(),
       foodEntries,
