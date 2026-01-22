@@ -45,8 +45,9 @@ export async function GET(request: NextRequest) {
               try {
                 const payload = JSON.parse(ev.payload)
                 // Attach lightweight metadata for robust client-side resuming
-                // without changing existing consumer logic.
+                // and deduplication without changing existing consumer logic.
                 ;(payload as any)._ts = ev.createdAt.toISOString()
+                ;(payload as any)._eventId = ev.id
                 send(payload)
                 // Move cursor forward per-event to avoid duplicates if streaming throws
                 since = ev.createdAt.toISOString()

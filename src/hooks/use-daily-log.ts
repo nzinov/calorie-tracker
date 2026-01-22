@@ -1,5 +1,14 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
+
+// BroadcastChannel for cross-tab synchronization
+const SYNC_CHANNEL_NAME = 'calorie-tracker-sync'
+
+type SyncMessage = {
+  type: 'foodAdded' | 'foodUpdated' | 'foodDeleted'
+  date: string
+  data: any
+}
 
 // UserFood represents a food in user's database
 interface UserFood {
@@ -45,6 +54,9 @@ export function useDailyLog(date: string) {
   const [data, setData] = useState<DailyLogData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // BroadcastChannel for cross-tab sync
+  const channelRef = useRef<BroadcastChannel | null>(null)
 
   // Helper function to calculate nutrition from entry
   function calculateEntryNutrition(entry: FoodEntry) {
@@ -57,6 +69,11 @@ export function useDailyLog(date: string) {
       fiber: entry.userFood.fiberPer100g * ratio,
       salt: entry.userFood.saltPer100g * ratio
     }
+  }
+
+  // Sort entries by timestamp to ensure consistent ordering across devices
+  function sortByTimestamp(entries: FoodEntry[]): FoodEntry[] {
+    return [...entries].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
   }
 
   // Calculate totals from food entries
@@ -73,6 +90,59 @@ export function useDailyLog(date: string) {
       }
     }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
   }
+
+  // Apply server-sent data change hints without refetching
+  // Defined early so it can be used in BroadcastChannel handler
+  const applyDataUpdate = useCallback((update: { foodAdded?: any; foodUpdated?: any; foodDeleted?: string }) => {
+    setData(prev => {
+      if (!prev) return prev
+
+      let updatedEntries = prev.foodEntries
+
+      if (update.foodAdded) {
+        const entry = update.foodAdded
+        // Skip if entry already exists (dedup SSE replays / multi-tab / broadcast)
+        if (updatedEntries.some(e => e.id === entry.id)) {
+          return prev
+        }
+        const newEntry = {
+          ...entry,
+          timestamp: new Date(entry.timestamp)
+        }
+        updatedEntries = [...updatedEntries, newEntry]
+      } else if (update.foodUpdated) {
+        const entry = update.foodUpdated
+        // Skip if entry doesn't exist (already deleted)
+        if (!updatedEntries.some(e => e.id === entry.id)) {
+          return prev
+        }
+        const updated = {
+          ...entry,
+          timestamp: new Date(entry.timestamp)
+        }
+        updatedEntries = updatedEntries.map(e => e.id === updated.id ? updated : e)
+      } else if (update.foodDeleted) {
+        const id = update.foodDeleted
+        // Skip if entry doesn't exist (already deleted)
+        if (!updatedEntries.some(e => e.id === id)) {
+          return prev
+        }
+        updatedEntries = updatedEntries.filter(e => e.id !== id)
+      } else {
+        return prev
+      }
+
+      // Sort to ensure consistent ordering across all devices
+      const sortedEntries = sortByTimestamp(updatedEntries)
+      const newTotals = calculateTotals(sortedEntries)
+
+      return {
+        ...prev,
+        foodEntries: sortedEntries,
+        totals: newTotals
+      }
+    })
+  }, [])
 
   const fetchData = useCallback(async () => {
     // In development, always proceed. In production, wait until authenticated
@@ -107,6 +177,42 @@ export function useDailyLog(date: string) {
     }
   }, [status, date])
 
+  // Set up BroadcastChannel for cross-tab synchronization
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return
+
+    const channel = new BroadcastChannel(SYNC_CHANNEL_NAME)
+    channelRef.current = channel
+
+    channel.onmessage = (event: MessageEvent<SyncMessage>) => {
+      const msg = event.data
+      // Only apply updates for the current date
+      if (msg.date !== date) return
+
+      if (msg.type === 'foodAdded') {
+        applyDataUpdate({ foodAdded: msg.data })
+      } else if (msg.type === 'foodUpdated') {
+        applyDataUpdate({ foodUpdated: msg.data })
+      } else if (msg.type === 'foodDeleted') {
+        applyDataUpdate({ foodDeleted: msg.data })
+      }
+    }
+
+    return () => {
+      channel.close()
+      channelRef.current = null
+    }
+  }, [date, applyDataUpdate])
+
+  // Broadcast a sync message to other tabs
+  const broadcastSync = (msg: SyncMessage) => {
+    try {
+      channelRef.current?.postMessage(msg)
+    } catch {
+      // Ignore errors if channel is closed
+    }
+  }
+
   useEffect(() => {
     // Clear data when date changes to avoid working with stale data
     if (data) {
@@ -135,12 +241,17 @@ export function useDailyLog(date: string) {
       setData(prev => {
         if (!prev) return null
 
+        // Defensive dedup: skip if entry already exists (e.g., SSE event arrived first)
+        if (prev.foodEntries.some(e => e.id === newEntry.id)) {
+          return prev
+        }
+
         const newFoodEntry = {
           ...newEntry,
           timestamp: new Date(newEntry.timestamp)
         }
 
-        const updatedEntries = [...prev.foodEntries, newFoodEntry]
+        const updatedEntries = sortByTimestamp([...prev.foodEntries, newFoodEntry])
         const newTotals = calculateTotals(updatedEntries)
 
         return {
@@ -149,6 +260,9 @@ export function useDailyLog(date: string) {
           totals: newTotals
         }
       })
+
+      // Broadcast to other tabs
+      broadcastSync({ type: 'foodAdded', date, data: newEntry })
 
       return newEntry
     } catch (err) {
@@ -184,11 +298,11 @@ export function useDailyLog(date: string) {
       setData(prev => {
         if (!prev) return null
 
-        const updatedEntries = prev.foodEntries.map(existingEntry =>
+        const updatedEntries = sortByTimestamp(prev.foodEntries.map(existingEntry =>
           existingEntry.id === id
             ? { ...updatedEntry, timestamp: new Date(updatedEntry.timestamp) }
             : existingEntry
-        )
+        ))
 
         const newTotals = calculateTotals(updatedEntries)
 
@@ -198,6 +312,9 @@ export function useDailyLog(date: string) {
           totals: newTotals
         }
       })
+
+      // Broadcast to other tabs
+      broadcastSync({ type: 'foodUpdated', date, data: updatedEntry })
     } catch (err) {
       throw err
     }
@@ -226,59 +343,12 @@ export function useDailyLog(date: string) {
           totals: newTotals
         }
       })
+
+      // Broadcast to other tabs
+      broadcastSync({ type: 'foodDeleted', date, data: id })
     } catch (err) {
       throw err
     }
-  }
-
-  // Apply server-sent data change hints without refetching
-  const applyDataUpdate = (update: { foodAdded?: any; foodUpdated?: any; foodDeleted?: string }) => {
-    setData(prev => {
-      if (!prev) return prev
-
-      let updatedEntries = prev.foodEntries
-
-      if (update.foodAdded) {
-        const entry = update.foodAdded
-        // Skip if entry already exists (dedup SSE replays / multi-tab)
-        if (updatedEntries.some(e => e.id === entry.id)) {
-          return prev
-        }
-        const newEntry = {
-          ...entry,
-          timestamp: new Date(entry.timestamp)
-        }
-        updatedEntries = [...updatedEntries, newEntry]
-      } else if (update.foodUpdated) {
-        const entry = update.foodUpdated
-        // Skip if entry doesn't exist (already deleted)
-        if (!updatedEntries.some(e => e.id === entry.id)) {
-          return prev
-        }
-        const updated = {
-          ...entry,
-          timestamp: new Date(entry.timestamp)
-        }
-        updatedEntries = updatedEntries.map(e => e.id === updated.id ? updated : e)
-      } else if (update.foodDeleted) {
-        const id = update.foodDeleted
-        // Skip if entry doesn't exist (already deleted)
-        if (!updatedEntries.some(e => e.id === id)) {
-          return prev
-        }
-        updatedEntries = updatedEntries.filter(e => e.id !== id)
-      } else {
-        return prev
-      }
-
-      const newTotals = calculateTotals(updatedEntries)
-
-      return {
-        ...prev,
-        foodEntries: updatedEntries,
-        totals: newTotals
-      }
-    })
   }
 
 

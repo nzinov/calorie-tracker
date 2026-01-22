@@ -59,6 +59,9 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const [showImageOptions, setShowImageOptions] = useState(false)
 
+  // Track processed event IDs to prevent duplicate event application
+  const processedEventIdsRef = useRef<Set<string>>(new Set())
+
   // Quick-add state
   const [selectedFood, setSelectedFood] = useState<UserFood | null>(null)
   const [quickAddGrams, setQuickAddGrams] = useState("")
@@ -182,6 +185,8 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
     // Reset when date changes
     setHasLoadedInitialMessages(false)
     setMessages([])
+    // Clear processed event IDs for the new session
+    processedEventIdsRef.current.clear()
     loadChatSession()
   }, [date])
 
@@ -189,13 +194,23 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
   useEffect(() => {
     let cancelled = false
     let controller: AbortController | null = null
-    const lastTsRef = { current: null as string | null }
+    // Track the timestamp of the last received event to ensure reliable replay
+    // Initialize to session start time (beginning of day) to catch all events on first connect
+    const sessionStartTime = new Date()
+    sessionStartTime.setHours(0, 0, 0, 0)
+    const lastTsRef = { current: sessionStartTime.toISOString() }
     const attemptRef = { current: 0 }
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
 
     const connect = async () => {
       if (!chatSessionId || cancelled) return
+      // Clear any pending reconnect
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+        reconnectTimeout = null
+      }
       controller = new AbortController()
-      const since = (lastTsRef.current || new Date(Date.now() - 2000).toISOString())
+      const since = lastTsRef.current
       try {
         const res = await fetch(
           `/api/chat/events/stream?chatSessionId=${encodeURIComponent(chatSessionId)}&since=${encodeURIComponent(since)}`,
@@ -207,18 +222,36 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
         // If stream finishes without error (e.g., network change), reconnect
         if (!cancelled) {
           const delay = Math.min(1000 * Math.pow(2, attemptRef.current++), 15000)
-          setTimeout(connect, delay)
+          reconnectTimeout = setTimeout(connect, delay)
         }
       } catch (_) {
         if (cancelled) return
         const delay = Math.min(1000 * Math.pow(2, attemptRef.current++), 15000)
-        setTimeout(connect, delay)
+        reconnectTimeout = setTimeout(connect, delay)
       }
     }
 
+    // Handle visibility changes - reconnect immediately when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && chatSessionId && !cancelled) {
+        // Abort current connection and reconnect immediately to fetch missed events
+        try { controller?.abort() } catch {}
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout)
+          reconnectTimeout = null
+        }
+        attemptRef.current = 0 // reset backoff for immediate reconnect
+        connect()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     connect()
+
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
       try { controller?.abort() } catch {}
     }
   }, [chatSessionId])
@@ -305,6 +338,21 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
             if (evt && typeof evt._ts === 'string' && onTs) {
               onTs(evt._ts)
             }
+            
+            // Event-level deduplication: skip if we've already processed this event
+            const eventId = evt._eventId as string | undefined
+            if (eventId) {
+              if (processedEventIdsRef.current.has(eventId)) {
+                continue // Skip duplicate event
+              }
+              processedEventIdsRef.current.add(eventId)
+              // Keep the set from growing unbounded (max 1000 entries)
+              if (processedEventIdsRef.current.size > 1000) {
+                const firstKey = processedEventIdsRef.current.values().next().value
+                if (firstKey) processedEventIdsRef.current.delete(firstKey)
+              }
+            }
+            
             if (evt.type === "status" && evt.message) {
               setProcessingSteps(prev => [...prev, evt.message])
             }
