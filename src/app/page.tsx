@@ -12,11 +12,39 @@ import { useState, useRef, useEffect } from "react"
 
 type MobileTab = "log" | "items"
 
+// Helper to get today's date string in YYYY-MM-DD format
+function getTodayDateString(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
 export default function Home() {
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  })
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString)
+  
+  // Track what "today" was when the app was last active
+  // This helps us detect when a day has actually passed (not just tab switching)
+  const lastKnownTodayRef = useRef<string>(getTodayDateString())
+  
+  // Auto-switch to today's date when a new day has started
+  // This handles the case where the user left the app open yesterday
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const currentToday = getTodayDateString()
+        const previousToday = lastKnownTodayRef.current
+        
+        // Only auto-switch if a day has actually passed
+        // This ensures users can manually select yesterday within the same day
+        if (currentToday !== previousToday) {
+          lastKnownTodayRef.current = currentToday
+          setSelectedDate(currentToday)
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+  
   const { data, loading, error, deleteFoodEntry, updateFoodEntry, addFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
   const { userFoods, fetchUserFoods } = useUserSettings()
   const [editingEntry, setEditingEntry] = useState<any>(null)
