@@ -38,7 +38,7 @@ interface ChatInterfaceProps {
   onDataUpdate?: (update: DataUpdate) => void
   date: string
   userFoods?: UserFood[]
-  onQuickAdd?: (entry: { userFoodId: string; grams: number }) => Promise<void>
+  onQuickAdd?: (entry: { userFoodId: string; grams: number; chatSessionId?: string }) => Promise<void>
   onUserFoodCreated?: () => void
 }
 
@@ -575,7 +575,7 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
 
     setQuickAdding(true)
     try {
-      await onQuickAdd({ userFoodId: selectedFood.id, grams: gramsNum })
+      await onQuickAdd({ userFoodId: selectedFood.id, grams: gramsNum, chatSessionId: chatSessionId || undefined })
       setSelectedFood(null)
       setQuickAddGrams("")
       setInput("")

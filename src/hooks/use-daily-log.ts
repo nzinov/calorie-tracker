@@ -221,7 +221,7 @@ export function useDailyLog(date: string) {
     fetchData();
   }, [fetchData, date])
 
-  const addFoodEntry = async (entry: { userFoodId: string; grams: number }) => {
+  const addFoodEntry = async (entry: { userFoodId: string; grams: number; chatSessionId?: string }) => {
     try {
       const response = await fetch("/api/food-entries", {
         method: "POST",

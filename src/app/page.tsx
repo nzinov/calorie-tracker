@@ -125,7 +125,7 @@ export default function Home() {
     }
   }
 
-  const handleAddEntry = async (entry: { userFoodId: string; grams: number }) => {
+  const handleAddEntry = async (entry: { userFoodId: string; grams: number; chatSessionId?: string }) => {
     try {
       await addFoodEntry(entry)
     } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { createChatEvent } from "@/lib/events"
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userFoodId, grams, date } = body
+    const { userFoodId, grams, date, chatSessionId } = body
 
     // Validate required fields
     if (!userFoodId || grams === undefined || !date) {
@@ -61,6 +62,34 @@ export async function POST(request: NextRequest) {
         userFood: true
       }
     })
+
+    // If chatSessionId provided, emit a pill message to the chat
+    if (chatSessionId) {
+      const calories = Math.round((userFood.caloriesPer100g * Number(grams)) / 100)
+      const content = `[User manually added ${grams}g of ${userFood.name} (${calories} kcal) via quick-add]`
+
+      // Save to ChatMessage table so model sees it in history (as user message since tool requires tool_call)
+      const savedMessage = await db.chatMessage.create({
+        data: {
+          role: 'user',
+          content,
+          chatSessionId,
+          toolCalls: null,
+          toolCallId: null,
+        }
+      })
+
+      // Emit event for real-time UI update (still show as tool pill in UI)
+      const eventPayload = {
+        type: 'message',
+        message: {
+          id: savedMessage.id,
+          role: 'tool',
+          content: `Added ${grams}g of ${userFood.name} (${calories} kcal)`,
+        }
+      }
+      await createChatEvent(chatSessionId, 'message', eventPayload)
+    }
 
     return NextResponse.json(foodEntry, { status: 201 })
   } catch (error) {
