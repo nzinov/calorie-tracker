@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth"
 import { DAILY_TARGETS } from "@/lib/constants"
 import { db as prisma } from "@/lib/db"
 import { createChatEvent } from "@/lib/events"
+import { foodSearch } from "@/lib/openfoodfacts"
 import { webSearch } from "@/lib/food"
 import { readFileSync } from "fs"
 import { getServerSession } from "next-auth/next"
@@ -51,7 +52,7 @@ IMPORTANT: Always try to estimate calories and nutritional values when users des
 
 Be reasonable with estimates but always provide them rather than asking for more details. Users prefer estimates over no logging. Do not ask for confirmations of your actions unless absolutely necessary.
 
-If a food is not in the database and you need information from the web to estimate its nutritional values (e.g. it's some specific brand), use the web_search tool to get accurate data from web sources before creating the food.
+If a food is not in the database and you need to look up its nutritional values (e.g. specific brand or product), use the food_search tool FIRST to search the Open Food Facts database. Only use web_search as a fallback if food_search returns no results.
 
 METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities when possible.
 
@@ -319,12 +320,27 @@ export async function POST(request: NextRequest) {
             }
           }
         },
-        // Web search for information
+        // Food search using Open Food Facts database
+        {
+          type: 'function',
+          function: {
+            name: 'food_search',
+            description: 'Search for food nutritional information in the Open Food Facts database. Use this FIRST when looking up calories, protein, carbs, fat for foods or brands. Returns nutrition per 100g.',
+            parameters: {
+              type: 'object',
+              properties: {
+                query: { type: 'string', description: 'Food name or brand to search for' }
+              },
+              required: ['query']
+            }
+          }
+        },
+        // Web search fallback
         {
           type: 'function',
           function: {
             name: 'web_search',
-            description: 'Search the web for information. Use for looking up nutritional info, brands, or any other factual data.',
+            description: 'Search the web for information. Use as FALLBACK if food_search returns no results, or for non-food queries.',
             parameters: {
               type: 'object',
               properties: {
@@ -611,9 +627,13 @@ export async function POST(request: NextRequest) {
                 }
                 break
               }
+              case 'food_search': {
+                toolResult = await foodSearch(parsedArgs.query)
+                break
+              }
               case 'web_search': {
                 const results = await webSearch(parsedArgs.query)
-                toolResult = `Search results for "${parsedArgs.query}":\n\n${results}`
+                toolResult = `Web search results for "${parsedArgs.query}":\n\n${results}`
                 break
               }
               case 'get_daily_status': {
