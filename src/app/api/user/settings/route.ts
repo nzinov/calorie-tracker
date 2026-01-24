@@ -41,7 +41,17 @@ export async function GET() {
       salt: user.targetSalt ?? DAILY_TARGETS.salt,
     }
 
-    return NextResponse.json({ targets })
+    // Parse JSON fields
+    let featureFlags = {}
+    let supplementsDismissedState = {}
+    try {
+      if (user.featureFlags) featureFlags = JSON.parse(user.featureFlags)
+    } catch {}
+    try {
+      if (user.supplementsDismissedState) supplementsDismissedState = JSON.parse(user.supplementsDismissedState)
+    } catch {}
+
+    return NextResponse.json({ targets, featureFlags, supplementsDismissedState })
   } catch (error) {
     console.error("Error fetching user settings:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -65,6 +75,8 @@ export async function PUT(request: NextRequest) {
       fat,
       fiber,
       salt,
+      featureFlags,
+      supplementsDismissedState,
     } = body || {}
 
     const updateData: any = {}
@@ -74,6 +86,8 @@ export async function PUT(request: NextRequest) {
     if (typeof fat === 'number') updateData.targetFat = fat
     if (typeof fiber === 'number') updateData.targetFiber = fiber
     if (typeof salt === 'number') updateData.targetSalt = salt
+    if (featureFlags !== undefined) updateData.featureFlags = JSON.stringify(featureFlags)
+    if (supplementsDismissedState !== undefined) updateData.supplementsDismissedState = JSON.stringify(supplementsDismissedState)
 
     await db.user.update({ where: { id: userId }, data: updateData })
 

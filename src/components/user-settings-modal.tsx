@@ -10,10 +10,10 @@ type Props = {
   onClose: () => void
 }
 
-type Tab = "targets" | "foods"
+type Tab = "targets" | "foods" | "features"
 
 export function UserSettingsModal({ open, onClose }: Props) {
-  const { targets, saveTargets, userFoods, loading, fetchUserFoods, deleteUserFood, createUserFood, updateUserFood } = useUserSettings()
+  const { targets, saveTargets, userFoods, loading, fetchUserFoods, deleteUserFood, createUserFood, updateUserFood, featureFlags, saveFeatureFlags } = useUserSettings()
   const [activeTab, setActiveTab] = useState<Tab>("targets")
   const [form, setForm] = useState({
     calories: 0,
@@ -130,6 +130,16 @@ export function UserSettingsModal({ open, onClose }: Props) {
           >
             Food Database
           </button>
+          <button
+            onClick={() => { setActiveTab("features"); setShowFoodForm(false) }}
+            className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === "features"
+                ? "text-blue-600 border-blue-600"
+                : "text-gray-500 border-transparent hover:text-gray-700"
+            }`}
+          >
+            Features
+          </button>
           <div className="flex-1" />
           <button
             onClick={onClose}
@@ -216,6 +226,25 @@ export function UserSettingsModal({ open, onClose }: Props) {
               onSave={handleSaveFood}
               onCancel={handleCancelFoodEdit}
             />
+          )}
+
+          {activeTab === "features" && (
+            <div>
+              <p className="text-sm text-gray-800 mb-4">Enable or disable experimental features.</p>
+
+              <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={featureFlags.supplementsReminder || false}
+                  onChange={(e) => saveFeatureFlags({ supplementsReminder: e.target.checked })}
+                  className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <div>
+                  <span className="block text-sm font-medium text-gray-900">Supplements Reminder</span>
+                  <span className="block text-xs text-gray-500">Show morning and evening reminders to take supplements</span>
+                </div>
+              </label>
+            </div>
           )}
         </div>
       </div>

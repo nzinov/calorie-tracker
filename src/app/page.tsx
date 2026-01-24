@@ -6,6 +6,7 @@ import { ChatInterface } from "@/components/chat-interface"
 import { FoodEntryTable } from "@/components/food-entry-table"
 import { FoodEntryEditModal } from "@/components/food-entry-edit-modal"
 import { NutritionDashboard } from "@/components/nutrition-dashboard"
+import { SupplementsBanner } from "@/components/supplements-banner"
 import { useDailyLog } from "@/hooks/use-daily-log"
 import { useUserSettings } from "@/contexts/user-settings"
 import { useState, useRef, useEffect } from "react"
@@ -185,6 +186,8 @@ export default function Home() {
             </div>
           </div>
         </header>
+
+        <SupplementsBanner />
 
         {/* Mobile tabs - only visible on small screens */}
         <div className="md:hidden bg-white border-b flex-shrink-0">
