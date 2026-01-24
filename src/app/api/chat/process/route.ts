@@ -57,7 +57,10 @@ METRIC UNITS PREFERRED: Always use metric units (grams, ml, etc.) for quantities
 
 IMPORTANT: DO NOT repeat nutritional information of the food after you add it and DO NOT mention total macros of the day unless user explicitly asks you. User can see them in the UI.
 
-If the user asks you what to eat, go off remaining nnutritional targets for the day and healthy eating guidelines.
+Use the get_daily_status tool when you need to:
+- Know current totals or remaining targets (e.g., user asks "how am I doing today?", "what should I eat?")
+- Edit or delete a food entry (you need the entry IDs)
+- Answer questions about what the user has eaten today
 
 `
 }
@@ -331,6 +334,19 @@ export async function POST(request: NextRequest) {
             }
           }
         },
+        // Get daily status (totals, entries, remaining)
+        {
+          type: 'function',
+          function: {
+            name: 'get_daily_status',
+            description: 'Get current daily totals, food entries with IDs, and remaining targets. Use this when you need to know what the user has eaten, their progress, or when editing/deleting entries.',
+            parameters: {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        },
       ]
 
       const model = 'google/gemini-3-flash-preview'
@@ -397,8 +413,8 @@ export async function POST(request: NextRequest) {
           await createChatEvent(chatSessionId, 'status', { type: 'status', message: `Executing ${name}...` })
           let toolResult = ''
 
-          // Helper to get current nutritional context
-          const generateNutritionalContext = async () => {
+          // Helper to get current daily status
+          const getDailyStatus = async () => {
             const startDate = new Date(date)
             startDate.setHours(0, 0, 0, 0)
             const endDate = new Date(date)
@@ -425,23 +441,29 @@ export async function POST(request: NextRequest) {
               { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
             )
 
-            const totalsStr = `Current daily totals: ${Math.round(totals.calories)} calories, ${totals.protein.toFixed(1)}g protein, ${totals.carbs.toFixed(1)}g carbs, ${totals.fat.toFixed(1)}g fat, ${totals.fiber.toFixed(1)}g fiber, ${totals.salt.toFixed(2)}g salt.`
+            const remaining = {
+              calories: userTargets.calories - totals.calories,
+              protein: userTargets.protein - totals.protein,
+              carbs: userTargets.carbs - totals.carbs,
+              fat: userTargets.fat - totals.fat,
+              fiber: userTargets.fiber - totals.fiber,
+              salt: userTargets.salt - totals.salt,
+            }
 
-            let entriesStr = ''
+            let result = `Daily totals: ${Math.round(totals.calories)} kcal, ${totals.protein.toFixed(1)}g protein, ${totals.carbs.toFixed(1)}g carbs, ${totals.fat.toFixed(1)}g fat, ${totals.fiber.toFixed(1)}g fiber, ${totals.salt.toFixed(2)}g salt\n`
+            result += `Remaining: ${Math.round(remaining.calories)} kcal, ${remaining.protein.toFixed(1)}g protein, ${remaining.carbs.toFixed(1)}g carbs, ${remaining.fat.toFixed(1)}g fat, ${remaining.fiber.toFixed(1)}g fiber, ${remaining.salt.toFixed(2)}g salt\n`
+
             if (foodEntries.length > 0) {
-              entriesStr = `Current food entries:\n` + foodEntries.map((entry: any, index: number) => {
+              result += `\nFood entries today:\n` + foodEntries.map((entry: any, index: number) => {
                 const ratio = entry.grams / 100
                 const cals = Math.round(entry.userFood.caloriesPer100g * ratio)
                 return `${index + 1}. ${entry.userFood.name} (${entry.grams}g, ${cals} kcal) - Entry ID: ${entry.id}`
               }).join('\n')
+            } else {
+              result += `\nNo food entries yet today.`
             }
 
-            return { totalsStr, entriesStr, foodEntries }
-          }
-
-          const formatFoodOperationResult = async (message: string) => {
-            const { totalsStr, entriesStr } = await generateNutritionalContext()
-            return `${message}\n\n${totalsStr}${entriesStr ? `\n${entriesStr}` : ''}`
+            return result
           }
 
           try {
@@ -509,8 +531,7 @@ export async function POST(request: NextRequest) {
                     include: { userFood: true }
                   })
                   const calories = Math.round((food.caloriesPer100g * parsedArgs.grams) / 100)
-                  const message = `Added ${parsedArgs.grams}g of ${food.name} (${calories} kcal) to your log.`
-                  toolResult = await formatFoodOperationResult(message)
+                  toolResult = `Added ${parsedArgs.grams}g of ${food.name} (${calories} kcal) to your log.`
                   result.foodAdded = entry
                 }
                 break
@@ -571,7 +592,7 @@ export async function POST(request: NextRequest) {
                   } else {
                     message = `No changes made to "${foodName}".`
                   }
-                  toolResult = await formatFoodOperationResult(message)
+                  toolResult = message
                   result.foodUpdated = updated
                 }
                 break
@@ -585,8 +606,7 @@ export async function POST(request: NextRequest) {
                   toolResult = `Error: Food entry not found.`
                 } else {
                   await prisma.foodEntry.delete({ where: { id: parsedArgs.id } })
-                  const message = `Deleted ${entry.userFood.name} (${entry.grams}g) from your log.`
-                  toolResult = await formatFoodOperationResult(message)
+                  toolResult = `Deleted ${entry.userFood.name} (${entry.grams}g) from your log.`
                   result.foodDeleted = parsedArgs.id
                 }
                 break
@@ -594,6 +614,10 @@ export async function POST(request: NextRequest) {
               case 'web_search': {
                 const results = await webSearch(parsedArgs.query)
                 toolResult = `Search results for "${parsedArgs.query}":\n\n${results}`
+                break
+              }
+              case 'get_daily_status': {
+                toolResult = await getDailyStatus()
                 break
               }
               default:
