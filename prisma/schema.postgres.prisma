@@ -56,6 +56,10 @@ model User {
   targetFiber    Float?
   targetSalt     Float?
 
+  // Feature flags and related state
+  featureFlags              String?  // JSON: { supplementsReminder?: boolean, ... }
+  supplementsDismissedState String?  // JSON: { morningDismissedDate?: string, eveningDismissedDate?: string }
+
   accounts     Account[]
   sessions     Session[]
   userFoods    UserFood[]
