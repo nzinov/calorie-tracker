@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { db as prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 
 export async function GET(request: NextRequest) {
   try {
@@ -82,34 +83,60 @@ export async function POST(request: NextRequest) {
     // Set to start of day
     date.setHours(0, 0, 0, 0)
 
-    // Create or fetch chat session atomically to avoid unique violations
-    const chatSession = await prisma.chatSession.upsert({
-      where: { userId_date: { userId, date } },
-      update: {},
-      create: {
-        userId,
-        date,
-        messages: {
-          create: {
-            role: "assistant",
-            content: "Hi! I'm here to help you track your nutrition. Tell me what you ate and I'll log it for you!"
+    // Create or fetch chat session - handle race condition where concurrent
+    // requests may both try to create the same session
+    let chatSession
+    try {
+      chatSession = await prisma.chatSession.upsert({
+        where: { userId_date: { userId, date } },
+        update: {},
+        create: {
+          userId,
+          date,
+          messages: {
+            create: {
+              role: "assistant",
+              content: "Hi! I'm here to help you track your nutrition. Tell me what you ate and I'll log it for you!"
+            }
+          }
+        },
+        include: {
+          messages: {
+            orderBy: { timestamp: 'asc' },
+            select: {
+              id: true,
+              role: true,
+              content: true,
+              timestamp: true,
+              toolCalls: true,
+              toolCallId: true
+            }
           }
         }
-      },
-      include: {
-        messages: {
-          orderBy: { timestamp: 'asc' },
-          select: {
-            id: true,
-            role: true,
-            content: true,
-            timestamp: true,
-            toolCalls: true,
-            toolCallId: true
+      })
+    } catch (error) {
+      // P2002 = unique constraint violation - another request created the session first
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        chatSession = await prisma.chatSession.findUnique({
+          where: { userId_date: { userId, date } },
+          include: {
+            messages: {
+              orderBy: { timestamp: 'asc' },
+              select: {
+                id: true,
+                role: true,
+                content: true,
+                timestamp: true,
+                toolCalls: true,
+                toolCallId: true
+              }
+            }
           }
-        }
+        })
+      } else {
+        throw error
       }
-    })
+    }
 
     return NextResponse.json(chatSession)
   } catch (error) {
