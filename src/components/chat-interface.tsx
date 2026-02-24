@@ -565,7 +565,14 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
     setQuickAddGrams(food.defaultGrams?.toString() || "")
     setInput("")
     setShowSuggestions(false)
-    setTimeout(() => gramsInputRef.current?.focus(), 50)
+    setTimeout(() => {
+      const input = gramsInputRef.current
+      if (input) {
+        input.focus()
+        // Select the default value so new input replaces it
+        input.select()
+      }
+    }, 50)
   }
 
   const handleQuickAddSubmit = async () => {
@@ -783,10 +790,12 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
             value={quickAddGrams}
             onChange={(e) => setQuickAddGrams(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => {
+            onFocus={(e) => {
               setTimeout(() => {
                 try {
                   chatRef.current?.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'smooth' })
+                  // Select the default value so new input replaces it
+                  e.target.select()
                 } catch {}
               }, 500)
             }}
