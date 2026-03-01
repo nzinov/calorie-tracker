@@ -23,10 +23,15 @@ export async function GET(request: NextRequest) {
 
   const encoder = new TextEncoder()
   let open = true
+  const signal = request.signal
+
+  // Listen for abort immediately
+  signal?.addEventListener('abort', () => { open = false }, { once: true })
 
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: any) => {
+        if (!open) return false
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
           return true
@@ -36,12 +41,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      while (open) {
-        if ((request as any).signal?.aborted) break
+      while (open && !signal?.aborted) {
         try {
           const events = await getChatEventsSince(chatSessionId, since, 200)
           if (events.length > 0) {
             for (const ev of events) {
+              if (!open) break
               try {
                 const payload = JSON.parse(ev.payload)
                 // Attach lightweight metadata for robust client-side resuming
@@ -55,7 +60,7 @@ export async function GET(request: NextRequest) {
             }
           }
         } catch (e) {
-          send({ type: 'error', error: 'Failed to fetch events' })
+          if (open) send({ type: 'error', error: 'Failed to fetch events' })
         }
         await sleep(250)
       }
