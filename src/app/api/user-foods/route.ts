@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g, defaultGrams, comments } = body
+    const { name, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g, vegetablesPer100g, defaultGrams, comments } = body
 
     if (!name) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
         fatPer100g: Number(fatPer100g) || 0,
         fiberPer100g: Number(fiberPer100g) || 0,
         saltPer100g: Number(saltPer100g) || 0,
+        vegetablesPer100g: Number(vegetablesPer100g) || 0,
         defaultGrams: defaultGrams ? Number(defaultGrams) : null,
         comments: comments || null
       }

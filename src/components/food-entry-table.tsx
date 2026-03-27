@@ -11,6 +11,7 @@ interface UserFood {
   fatPer100g: number
   fiberPer100g: number
   saltPer100g: number
+  vegetablesPer100g: number
   defaultGrams: number | null
   comments: string | null
 }
@@ -141,6 +142,7 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                   <th className="text-right py-1.5 px-3 font-semibold text-gray-900 text-xs">Fat</th>
                   <th className="text-right py-1.5 px-3 font-semibold text-gray-900 text-xs">Fiber</th>
                   <th className="text-right py-1.5 px-3 font-semibold text-gray-900 text-xs">Salt</th>
+                  <th className="text-right py-1.5 px-3 font-semibold text-gray-900 text-xs">Veg</th>
                   <th className="text-center py-1.5 px-3 font-semibold text-gray-900 text-xs">Actions</th>
                 </tr>
               </thead>
@@ -154,7 +156,8 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                     carbs: entry.userFood.carbsPer100g * ratio,
                     fat: entry.userFood.fatPer100g * ratio,
                     fiber: entry.userFood.fiberPer100g * ratio,
-                    salt: entry.userFood.saltPer100g * ratio
+                    salt: entry.userFood.saltPer100g * ratio,
+                    vegetables: entry.userFood.vegetablesPer100g * ratio
                   }
                   return (
                     <tr key={entry.id} className={`border-b border-gray-200 hover:bg-gray-50 transition-opacity ${isDeleting ? 'opacity-50' : ''}`}>
@@ -167,6 +170,7 @@ export function FoodEntryTable({ entries, onEdit, onDelete }: FoodEntryTableProp
                       <td className="py-1.5 px-3 text-right text-gray-800 text-xs">{perPortion.fat.toFixed(1)}g</td>
                       <td className="py-1.5 px-3 text-right text-gray-800 text-xs">{perPortion.fiber.toFixed(1)}g</td>
                       <td className="py-1.5 px-3 text-right text-gray-800 text-xs">{perPortion.salt.toFixed(1)}g</td>
+                      <td className="py-1.5 px-3 text-right text-gray-800 text-xs">{perPortion.vegetables.toFixed(1)}g</td>
                       <td className="py-1.5 px-3 text-center">
                         <div className="flex justify-center space-x-2">
                           {onEdit && (

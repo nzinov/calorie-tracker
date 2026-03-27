@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth/next"
 import { NextRequest, NextResponse } from "next/server"
 
 // Helper function to calculate nutrition totals from food entries
-function calculateTotals(entries: Array<{ grams: number; userFood: { caloriesPer100g: number; proteinPer100g: number; carbsPer100g: number; fatPer100g: number; fiberPer100g: number; saltPer100g: number } }>) {
+function calculateTotals(entries: Array<{ grams: number; userFood: { caloriesPer100g: number; proteinPer100g: number; carbsPer100g: number; fatPer100g: number; fiberPer100g: number; saltPer100g: number; vegetablesPer100g: number } }>) {
   return entries.reduce(
     (acc, entry) => {
       const ratio = entry.grams / 100
@@ -15,9 +15,10 @@ function calculateTotals(entries: Array<{ grams: number; userFood: { caloriesPer
         fat: acc.fat + (entry.userFood.fatPer100g * ratio),
         fiber: acc.fiber + (entry.userFood.fiberPer100g * ratio),
         salt: acc.salt + (entry.userFood.saltPer100g * ratio),
+        vegetables: acc.vegetables + (entry.userFood.vegetablesPer100g * ratio),
       }
     },
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0, vegetables: 0 }
   )
 }
 

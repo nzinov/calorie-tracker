@@ -225,7 +225,7 @@ export default function Home() {
           <div className={`flex-1 min-h-0 flex flex-col p-4 gap-3 ${mobileTab !== "log" ? "hidden" : ""}`}>
             <div className="flex-shrink-0">
               <NutritionDashboard
-                data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }}
+                data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0, vegetables: 0 }}
                 compact
               />
             </div>
@@ -260,7 +260,7 @@ export default function Home() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                   </div>
                 )}
-                <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }} />
+                <NutritionDashboard data={data?.totals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0, vegetables: 0 }} />
               </div>
 
               <div className="lg:col-span-2 relative h-96">

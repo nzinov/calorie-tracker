@@ -55,6 +55,7 @@ model User {
   targetFat      Float?
   targetFiber    Float?
   targetSalt     Float?
+  targetVegetables Float?
 
   // Feature flags and related state
   featureFlags              String?  // JSON: { supplementsReminder?: boolean, ... }
@@ -80,19 +81,20 @@ model VerificationToken {
 
 // Central food database per user - stores nutritional info for each food type
 model UserFood {
-  id              String   @id @default(cuid())
-  userId          String
-  name            String
-  caloriesPer100g Float
-  proteinPer100g  Float
-  carbsPer100g    Float
-  fatPer100g      Float
-  fiberPer100g    Float
-  saltPer100g     Float
-  defaultGrams    Float?   // Optional default portion size for quick-add
-  comments        String?  // AI can store additional info (portion descriptions, notes, etc.)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String
+  name             String
+  caloriesPer100g  Float
+  proteinPer100g   Float
+  carbsPer100g     Float
+  fatPer100g       Float
+  fiberPer100g     Float
+  saltPer100g      Float
+  vegetablesPer100g Float // Amount of vegetables in grams per 100g (for foods that are partially vegetable)
+  defaultGrams     Float?   // Optional default portion size for quick-add
+  comments         String?  // AI can store additional info (portion descriptions, notes, etc.)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodEntries FoodEntry[]

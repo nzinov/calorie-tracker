@@ -16,12 +16,13 @@ export function UserSettingsModal({ open, onClose }: Props) {
   const { targets, saveTargets, userFoods, loading, fetchUserFoods, deleteUserFood, createUserFood, updateUserFood, featureFlags, saveFeatureFlags } = useUserSettings()
   const [activeTab, setActiveTab] = useState<Tab>("targets")
   const [form, setForm] = useState({
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-    fiber: 0,
-    salt: 0,
+    calories: targets?.calories ?? 0,
+    protein: targets?.protein ?? 0,
+    carbs: targets?.carbs ?? 0,
+    fat: targets?.fat ?? 0,
+    fiber: targets?.fiber ?? 0,
+    salt: targets?.salt ?? 0,
+    vegetables: targets?.vegetables ?? 0,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +94,7 @@ export function UserSettingsModal({ open, onClose }: Props) {
         fatPer100g: foodData.fatPer100g ?? 0,
         fiberPer100g: foodData.fiberPer100g ?? 0,
         saltPer100g: foodData.saltPer100g ?? 0,
+        vegetablesPer100g: foodData.vegetablesPer100g ?? 0,
         defaultGrams: foodData.defaultGrams ?? null,
         comments: foodData.comments ?? null
       })
@@ -195,6 +197,12 @@ export function UserSettingsModal({ open, onClose }: Props) {
                     <span className="block text-gray-900 mb-1">Salt (g)</span>
                     <input type="number" value={form.salt}
                            onChange={e => update('salt', e.target.value)}
+                           className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" />
+                  </label>
+                  <label className="text-sm text-gray-900">
+                    <span className="block text-gray-900 mb-1">Vegetables (g)</span>
+                    <input type="number" value={form.vegetables}
+                           onChange={e => update('vegetables', e.target.value)}
                            className="w-full border border-gray-300 rounded px-3 py-2 text-gray-900" />
                   </label>
                 </div>

@@ -39,6 +39,7 @@ export async function GET() {
       fat: user.targetFat ?? DAILY_TARGETS.fat,
       fiber: user.targetFiber ?? DAILY_TARGETS.fiber,
       salt: user.targetSalt ?? DAILY_TARGETS.salt,
+      vegetables: user.targetVegetables ?? DAILY_TARGETS.vegetables,
     }
 
     // Parse JSON fields
@@ -75,6 +76,7 @@ export async function PUT(request: NextRequest) {
       fat,
       fiber,
       salt,
+      vegetables,
       featureFlags,
       supplementsDismissedState,
     } = body || {}
@@ -86,6 +88,7 @@ export async function PUT(request: NextRequest) {
     if (typeof fat === 'number') updateData.targetFat = fat
     if (typeof fiber === 'number') updateData.targetFiber = fiber
     if (typeof salt === 'number') updateData.targetSalt = salt
+    if (typeof vegetables === 'number') updateData.targetVegetables = vegetables
     if (featureFlags !== undefined) updateData.featureFlags = JSON.stringify(featureFlags)
     if (supplementsDismissedState !== undefined) updateData.supplementsDismissedState = JSON.stringify(supplementsDismissedState)
 

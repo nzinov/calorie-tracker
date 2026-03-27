@@ -11,6 +11,7 @@ interface NutritionData {
   carbs: number
   fiber: number
   salt: number
+  vegetables: number
 }
 
 interface NutritionDashboardProps {
@@ -30,13 +31,14 @@ export function NutritionDashboard({ data, compact = false }: NutritionDashboard
       { label: "Fat", current: data.fat, target: t.fat, unit: "g", color: "bg-purple-500", textColor: "text-purple-600" },
       { label: "Fib", current: data.fiber, target: t.fiber, unit: "g", color: "bg-green-500", textColor: "text-green-600" },
       { label: "Salt", current: data.salt, target: t.salt, unit: "g", color: "bg-blue-500", textColor: "text-blue-600" },
+      { label: "Veg", current: data.vegetables || 0, target: t.vegetables, unit: "g", color: "bg-green-600", textColor: "text-green-700" },
     ]
 
     return (
       <div className="bg-white rounded-lg shadow-md p-3 h-full">
         <div className="grid gap-y-1" style={{ gridTemplateColumns: 'auto auto auto 1fr' }}>
           {nutrients.map((n) => {
-            const percentage = Math.round((n.current / n.target) * 100)
+            const percentage = n.target > 0 ? Math.round((n.current / n.target) * 100) : 0
             const isOver = n.current > n.target
             const remaining = n.target - n.current
             const remainingDisplay = Math.round(Math.abs(remaining))
@@ -114,6 +116,14 @@ export function NutritionDashboard({ data, compact = false }: NutritionDashboard
           target={t.salt}
           unit="g"
           color="bg-blue-500"
+        />
+
+        <ProgressBar
+          label="Vegetables"
+          current={data.vegetables}
+          target={t.vegetables}
+          unit="g"
+          color="bg-green-600"
         />
       </div>
     </div>

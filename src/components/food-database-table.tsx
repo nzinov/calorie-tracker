@@ -11,6 +11,7 @@ export interface UserFood {
   fatPer100g: number
   fiberPer100g: number
   saltPer100g: number
+  vegetablesPer100g: number
   defaultGrams: number | null
   comments: string | null
 }
@@ -88,6 +89,7 @@ export function FoodDatabaseTable({ items, onDelete, onEdit, onAdd }: FoodDataba
                 <th className="text-right py-2 px-3 font-semibold text-gray-900 text-xs">Protein</th>
                 <th className="text-right py-2 px-3 font-semibold text-gray-900 text-xs">Carbs</th>
                 <th className="text-right py-2 px-3 font-semibold text-gray-900 text-xs">Fat</th>
+                <th className="text-right py-2 px-3 font-semibold text-gray-900 text-xs">Veg</th>
                 <th className="text-center py-2 px-3 font-semibold text-gray-900 text-xs">Actions</th>
               </tr>
             </thead>
@@ -111,6 +113,7 @@ export function FoodDatabaseTable({ items, onDelete, onEdit, onAdd }: FoodDataba
                     <td className="py-2 px-3 text-right text-gray-800 text-xs">{item.proteinPer100g.toFixed(1)}g</td>
                     <td className="py-2 px-3 text-right text-gray-800 text-xs">{item.carbsPer100g.toFixed(1)}g</td>
                     <td className="py-2 px-3 text-right text-gray-800 text-xs">{item.fatPer100g.toFixed(1)}g</td>
+                    <td className="py-2 px-3 text-right text-gray-800 text-xs">{item.vegetablesPer100g.toFixed(1)}g</td>
                     <td className="py-2 px-3 text-center">
                       <div className="flex justify-center space-x-2">
                         <button

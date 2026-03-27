@@ -17,6 +17,7 @@ export function FoodEditForm({ food, onSave, onCancel }: FoodEditFormProps) {
   const [fatPer100g, setFatPer100g] = useState("")
   const [fiberPer100g, setFiberPer100g] = useState("")
   const [saltPer100g, setSaltPer100g] = useState("")
+  const [vegetablesPer100g, setVegetablesPer100g] = useState("")
   const [defaultGrams, setDefaultGrams] = useState("")
   const [comments, setComments] = useState("")
   const [saving, setSaving] = useState(false)
@@ -33,6 +34,7 @@ export function FoodEditForm({ food, onSave, onCancel }: FoodEditFormProps) {
       setFatPer100g(food.fatPer100g.toString())
       setFiberPer100g(food.fiberPer100g.toString())
       setSaltPer100g(food.saltPer100g.toString())
+      setVegetablesPer100g(food.vegetablesPer100g.toString())
       setDefaultGrams(food.defaultGrams?.toString() || "")
       setComments(food.comments || "")
     } else {
@@ -43,6 +45,7 @@ export function FoodEditForm({ food, onSave, onCancel }: FoodEditFormProps) {
       setFatPer100g("")
       setFiberPer100g("")
       setSaltPer100g("")
+      setVegetablesPer100g("0")
       setDefaultGrams("")
       setComments("")
     }
@@ -67,6 +70,7 @@ export function FoodEditForm({ food, onSave, onCancel }: FoodEditFormProps) {
       fatPer100g: parseFloat(fatPer100g) || 0,
       fiberPer100g: parseFloat(fiberPer100g) || 0,
       saltPer100g: parseFloat(saltPer100g) || 0,
+      vegetablesPer100g: parseFloat(vegetablesPer100g) || 0,
       defaultGrams: defaultGrams ? parseFloat(defaultGrams) : null,
       comments: comments.trim() || null
     }
@@ -202,6 +206,23 @@ export function FoodEditForm({ food, onSave, onCancel }: FoodEditFormProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="0"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Vegetables (g per 100g)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={vegetablesPer100g}
+              onChange={(e) => setVegetablesPer100g(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Amount of vegetables in grams per 100g of food
+            </p>
           </div>
         </div>
 

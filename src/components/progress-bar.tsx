@@ -5,9 +5,10 @@ interface ProgressBarProps {
   unit: string
   color?: string
   compact?: boolean
+  showTarget?: boolean
 }
 
-export function ProgressBar({ label, current, target, unit, color = "bg-blue-500", compact = false }: ProgressBarProps) {
+export function ProgressBar({ label, current, target, unit, color = "bg-blue-500", compact = false, showTarget = true }: ProgressBarProps) {
   const percentage = (current / target) * 100
   const isOverTarget = current > target
 
@@ -29,9 +30,16 @@ export function ProgressBar({ label, current, target, unit, color = "bg-blue-500
     <div className="space-y-1">
       <div className="flex justify-between items-center">
         <span className="text-xs md:text-sm font-medium text-gray-800">{label}</span>
-        <span className={`text-xs md:text-sm font-medium ${isOverTarget ? "text-red-700" : "text-gray-800"}`}>
-          {current.toFixed(1)}/{target} {unit}
-        </span>
+        {showTarget && (
+          <span className={`text-xs md:text-sm font-medium ${isOverTarget ? "text-red-700" : "text-gray-800"}`}>
+            {current.toFixed(1)}/{target} {unit}
+          </span>
+        )}
+        {!showTarget && (
+          <span className="text-xs md:text-sm font-medium text-gray-800">
+            {current.toFixed(1)} {unit}
+          </span>
+        )}
       </div>
       <div className="w-full bg-gray-200 rounded-full h-1.5">
         <div

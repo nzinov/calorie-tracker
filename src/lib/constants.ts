@@ -5,6 +5,7 @@ export const DAILY_TARGETS = {
   carbs: 160,
   fiber: 37,
   salt: 5,
+  vegetables: 300,
   water: 8, // glasses
 } as const
 

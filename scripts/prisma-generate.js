@@ -11,7 +11,7 @@ if (process.env.PRISMA_SKIP_POSTINSTALL_GENERATE) {
 }
 
 const url = process.env.DATABASE_URL || ''
-const isPostgres = url.startsWith('postgresql://') || process.env.NODE_ENV === 'production'
+const isPostgres = url.startsWith('postgresql://') || url.startsWith('postgres://')
 const schema = isPostgres ? 'prisma/schema.postgres.prisma' : 'prisma/schema.prisma'
 
 console.log(`[prisma-generate] Using schema: ${schema}`)

@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
       // Build system + context message with food database
       const systemContent = buildSystemPrompt(userTargets) + (userFoods && userFoods.length > 0
         ? ("\n\n## User's Food Database (reference by ID when adding entries):\n" + userFoods.map((f: any, i: number) => {
-            const macros = `cal ${Math.round(f.caloriesPer100g)}, prot ${Number(f.proteinPer100g).toFixed(1)}g, carbs ${Number(f.carbsPer100g).toFixed(1)}g, fat ${Number(f.fatPer100g).toFixed(1)}g, fiber ${Number(f.fiberPer100g).toFixed(1)}g, salt ${Number(f.saltPer100g).toFixed(2)}g`
+            const macros = `cal ${Math.round(f.caloriesPer100g)}, prot ${Number(f.proteinPer100g).toFixed(1)}g, carbs ${Number(f.carbsPer100g).toFixed(1)}g, fat ${Number(f.fatPer100g).toFixed(1)}g, fiber ${Number(f.fiberPer100g).toFixed(1)}g, salt ${Number(f.saltPer100g).toFixed(2)}g, veg ${Number(f.vegetablesPer100g).toFixed(1)}g`
             const defaultPortion = f.defaultGrams ? ` (default: ${Math.round(f.defaultGrams)}g)` : ''
             const comments = f.comments ? ` — ${f.comments}` : ''
             return `${i + 1}. [ID: ${f.id}] ${f.name}${defaultPortion} — per 100g: ${macros}${comments}`
@@ -235,10 +235,11 @@ export async function POST(request: NextRequest) {
                 fatPer100g: { type: 'number', description: 'Fat in grams per 100g' },
                 fiberPer100g: { type: 'number', description: 'Fiber in grams per 100g' },
                 saltPer100g: { type: 'number', description: 'Salt in grams per 100g' },
+                vegetablesPer100g: { type: 'number', description: 'Amount of vegetables in grams per 100g (for foods that are partially vegetable)' },
                 defaultGrams: { type: 'number', description: 'Default portion size in grams (optional)' },
                 comments: { type: 'string', description: 'Additional notes like portion descriptions, brand info, etc. (optional, you can leave it empty)' }
               },
-              required: ['name', 'caloriesPer100g', 'proteinPer100g', 'carbsPer100g', 'fatPer100g', 'fiberPer100g', 'saltPer100g']
+              required: ['name', 'caloriesPer100g', 'proteinPer100g', 'carbsPer100g', 'fatPer100g', 'fiberPer100g', 'saltPer100g', 'vegetablesPer100g']
             }
           }
         },
@@ -259,6 +260,7 @@ export async function POST(request: NextRequest) {
                 fatPer100g: { type: 'number', description: 'Fat in grams per 100g (optional)' },
                 fiberPer100g: { type: 'number', description: 'Fiber in grams per 100g (optional)' },
                 saltPer100g: { type: 'number', description: 'Salt in grams per 100g (optional)' },
+                vegetablesPer100g: { type: 'number', description: 'Amount of vegetables in grams per 100g (optional)' },
                 defaultGrams: { type: 'number', description: 'Default portion size in grams (optional)' },
                 comments: { type: 'string', description: 'Additional notes (optional)' }
               },
@@ -436,9 +438,10 @@ export async function POST(request: NextRequest) {
                   fat: acc.fat + (entry.userFood.fatPer100g * ratio),
                   fiber: acc.fiber + (entry.userFood.fiberPer100g * ratio),
                   salt: acc.salt + (entry.userFood.saltPer100g * ratio),
+                  vegetables: acc.vegetables + (entry.userFood.vegetablesPer100g * ratio),
                 }
               },
-              { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
+              { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0, vegetables: 0 }
             )
 
             const remaining = {
@@ -448,9 +451,10 @@ export async function POST(request: NextRequest) {
               fat: userTargets.fat - totals.fat,
               fiber: userTargets.fiber - totals.fiber,
               salt: userTargets.salt - totals.salt,
+              vegetables: totals.vegetables, // Vegetables don't have a target, just show total
             }
 
-            let result = `Daily totals: ${Math.round(totals.calories)} kcal, ${totals.protein.toFixed(1)}g protein, ${totals.carbs.toFixed(1)}g carbs, ${totals.fat.toFixed(1)}g fat, ${totals.fiber.toFixed(1)}g fiber, ${totals.salt.toFixed(2)}g salt\n`
+            let result = `Daily totals: ${Math.round(totals.calories)} kcal, ${totals.protein.toFixed(1)}g protein, ${totals.carbs.toFixed(1)}g carbs, ${totals.fat.toFixed(1)}g fat, ${totals.fiber.toFixed(1)}g fiber, ${totals.salt.toFixed(2)}g salt, ${totals.vegetables.toFixed(1)}g vegetables\n`
             result += `Remaining: ${Math.round(remaining.calories)} kcal, ${remaining.protein.toFixed(1)}g protein, ${remaining.carbs.toFixed(1)}g carbs, ${remaining.fat.toFixed(1)}g fat, ${remaining.fiber.toFixed(1)}g fiber, ${remaining.salt.toFixed(2)}g salt\n`
 
             if (foodEntries.length > 0) {
@@ -479,6 +483,7 @@ export async function POST(request: NextRequest) {
                     fatPer100g: Number(parsedArgs.fatPer100g),
                     fiberPer100g: Number(parsedArgs.fiberPer100g),
                     saltPer100g: Number(parsedArgs.saltPer100g),
+                    vegetablesPer100g: Number(parsedArgs.vegetablesPer100g),
                     defaultGrams: parsedArgs.defaultGrams ? Number(parsedArgs.defaultGrams) : null,
                     comments: parsedArgs.comments || null
                   }
@@ -504,6 +509,7 @@ export async function POST(request: NextRequest) {
                       ...(parsedArgs.fatPer100g !== undefined ? { fatPer100g: Number(parsedArgs.fatPer100g) } : {}),
                       ...(parsedArgs.fiberPer100g !== undefined ? { fiberPer100g: Number(parsedArgs.fiberPer100g) } : {}),
                       ...(parsedArgs.saltPer100g !== undefined ? { saltPer100g: Number(parsedArgs.saltPer100g) } : {}),
+                      ...(parsedArgs.vegetablesPer100g !== undefined ? { vegetablesPer100g: Number(parsedArgs.vegetablesPer100g) } : {}),
                       ...(parsedArgs.defaultGrams !== undefined ? { defaultGrams: parsedArgs.defaultGrams ? Number(parsedArgs.defaultGrams) : null } : {}),
                       ...(parsedArgs.comments !== undefined ? { comments: parsedArgs.comments || null } : {})
                     }

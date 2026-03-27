@@ -10,6 +10,7 @@ export type Targets = {
   fat: number
   fiber: number
   salt: number
+  vegetables: number
 }
 
 export type UserFood = {
@@ -21,6 +22,7 @@ export type UserFood = {
   fatPer100g: number
   fiberPer100g: number
   saltPer100g: number
+  vegetablesPer100g: number
   defaultGrams: number | null
   comments: string | null
 }

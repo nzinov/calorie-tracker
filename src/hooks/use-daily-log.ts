@@ -20,6 +20,7 @@ interface UserFood {
   fatPer100g: number
   fiberPer100g: number
   saltPer100g: number
+  vegetablesPer100g: number
   defaultGrams: number | null
   comments: string | null
 }
@@ -41,6 +42,7 @@ interface NutritionTotals {
   fat: number
   fiber: number
   salt: number
+  vegetables: number
 }
 
 interface DailyLogData {
@@ -67,7 +69,8 @@ export function useDailyLog(date: string) {
       carbs: entry.userFood.carbsPer100g * ratio,
       fat: entry.userFood.fatPer100g * ratio,
       fiber: entry.userFood.fiberPer100g * ratio,
-      salt: entry.userFood.saltPer100g * ratio
+      salt: entry.userFood.saltPer100g * ratio,
+      vegetables: entry.userFood.vegetablesPer100g * ratio
     }
   }
 
@@ -87,8 +90,9 @@ export function useDailyLog(date: string) {
         fat: totals.fat + nutrition.fat,
         fiber: totals.fiber + nutrition.fiber,
         salt: totals.salt + nutrition.salt,
+        vegetables: totals.vegetables + nutrition.vegetables,
       }
-    }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 })
+    }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0, vegetables: 0 })
   }
 
   // Apply server-sent data change hints without refetching
@@ -167,6 +171,19 @@ export function useDailyLog(date: string) {
         ...entry,
         timestamp: new Date(entry.timestamp),
       }))
+
+      // Ensure totals are valid numbers (not NaN or undefined)
+      if (result.totals) {
+        result.totals = {
+          calories: Number.isFinite(result.totals.calories) ? result.totals.calories : 0,
+          protein: Number.isFinite(result.totals.protein) ? result.totals.protein : 0,
+          carbs: Number.isFinite(result.totals.carbs) ? result.totals.carbs : 0,
+          fat: Number.isFinite(result.totals.fat) ? result.totals.fat : 0,
+          fiber: Number.isFinite(result.totals.fiber) ? result.totals.fiber : 0,
+          salt: Number.isFinite(result.totals.salt) ? result.totals.salt : 0,
+          vegetables: Number.isFinite(result.totals.vegetables) ? result.totals.vegetables : 0,
+        }
+      }
 
       setData(result)
       setError(null)

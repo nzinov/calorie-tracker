@@ -58,7 +58,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Food not found' }, { status: 404 })
     }
 
-    const { name, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g, defaultGrams, comments } = body
+    const { name, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, fiberPer100g, saltPer100g, vegetablesPer100g, defaultGrams, comments } = body
 
     const userFood = await db.userFood.update({
       where: { id },
@@ -70,6 +70,7 @@ export async function PUT(
         ...(fatPer100g !== undefined ? { fatPer100g: Number(fatPer100g) } : {}),
         ...(fiberPer100g !== undefined ? { fiberPer100g: Number(fiberPer100g) } : {}),
         ...(saltPer100g !== undefined ? { saltPer100g: Number(saltPer100g) } : {}),
+        ...(vegetablesPer100g !== undefined ? { vegetablesPer100g: Number(vegetablesPer100g) } : {}),
         ...(defaultGrams !== undefined ? { defaultGrams: defaultGrams ? Number(defaultGrams) : null } : {}),
         ...(comments !== undefined ? { comments: comments || null } : {})
       }
