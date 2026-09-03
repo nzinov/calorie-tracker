@@ -41,10 +41,32 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // SSE comment line. The client skips any line that is not `data:`, so this
+      // is traffic on the wire and nothing more.
+      const sendKeepalive = () => {
+        if (!open) return false
+        try {
+          controller.enqueue(encoder.encode(`: keepalive\n\n`))
+          return true
+        } catch {
+          open = false
+          return false
+        }
+      }
+
+      const ACTIVE_POLL_MS = 250
+      const IDLE_POLL_MS = 1000
+      const ACTIVE_WINDOW_MS = 10_000
+      const KEEPALIVE_MS = 20_000
+
+      let lastEventAt = Date.now()
+      let lastKeepaliveAt = Date.now()
+
       while (open && !signal?.aborted) {
         try {
           const events = await getChatEventsSince(chatSessionId, since, 200)
           if (events.length > 0) {
+            lastEventAt = Date.now()
             for (const ev of events) {
               if (!open) break
               try {
@@ -62,7 +84,17 @@ export async function GET(request: NextRequest) {
         } catch (e) {
           if (open) send({ type: 'error', error: 'Failed to fetch events' })
         }
-        await sleep(250)
+
+        // An idle stream used to send nothing at all, so the edge proxy closed it
+        // on its 300s idle timeout and the client reconnected every 5 minutes.
+        if (open && Date.now() - lastKeepaliveAt >= KEEPALIVE_MS) {
+          if (sendKeepalive()) lastKeepaliveAt = Date.now()
+        }
+
+        // Poll quickly while a turn is producing events, slowly when idle. Every
+        // connection queries the database on this interval for its whole lifetime.
+        const idle = Date.now() - lastEventAt > ACTIVE_WINDOW_MS
+        await sleep(idle ? IDLE_POLL_MS : ACTIVE_POLL_MS)
       }
 
       try { controller.close() } catch {}

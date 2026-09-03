@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { createChatEvent } from "@/lib/events"
+import { createChatEvent, recordDataChange } from "@/lib/events"
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,6 +90,9 @@ export async function POST(request: NextRequest) {
       }
       await createChatEvent(chatSessionId, 'message', eventPayload)
     }
+
+    // Record the add so other devices streaming this day pick it up
+    await recordDataChange(userId, entryDate, { day: true })
 
     return NextResponse.json(foodEntry, { status: 201 })
   } catch (error) {

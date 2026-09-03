@@ -54,6 +54,55 @@ export async function createChatEvent(chatSessionId: string, type: ChatEventType
   }
 }
 
+// What a change invalidated. Events carry no payload: the client refetches the
+// affected resource, which is the same authoritative path it uses on load. That
+// makes replay idempotent - N events collapse into one refetch - and removes the
+// client-side merge that used to splice payloads into local state.
+export type DataChange = {
+  day?: boolean    // the daily log for targetDate changed
+  foods?: boolean  // the user's food database changed
+}
+
+// Normalise a day the same way every write path does, so a food entry and the
+// chat session for its day agree on the value.
+export function startOfDay(value: Date | string) {
+  const d = new Date(value)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+// Format a day as the YYYY-MM-DD string the client compares against. Dates are
+// normalised in server-local time, so read the local components back rather than
+// going through toISOString(), which can land on the previous day.
+function toDateString(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// Record a change on the chat session for the day it affects, so every client
+// streaming that day learns to refetch.
+export async function recordDataChange(userId: string, date: Date | string, changed: DataChange) {
+  try {
+    const day = startOfDay(date)
+    const chatSession = await withRetry(() => db.chatSession.findUnique({
+      where: { userId_date: { userId, date: day } },
+      select: { id: true }
+    }))
+    // No session for that day means no stream is listening for it.
+    if (!chatSession) return
+    await createChatEvent(chatSession.id, 'data_changed', {
+      type: 'data_changed',
+      targetDate: toDateString(day),
+      changed
+    })
+  } catch (e) {
+    // Never let event recording fail the mutation that triggered it
+    console.error('Failed to record data change', e)
+  }
+}
+
 export async function getChatEventsSince(chatSessionId: string, sinceIso?: string, limit = 100) {
   const where: any = { chatSessionId }
   if (sinceIso) {

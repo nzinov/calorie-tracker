@@ -1,5 +1,6 @@
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { recordDataChange } from "@/lib/events"
 import { getServerSession } from "next-auth/next"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -76,6 +77,10 @@ export async function PUT(
       }
     })
 
+    // The food database is not per-day, so signal the session for today - that is
+    // the day an active client is realistically streaming.
+    await recordDataChange(userId, new Date(), { foods: true })
+
     return NextResponse.json(userFood)
   } catch (error: any) {
     console.error('Error updating user food:', error)
@@ -114,6 +119,8 @@ export async function DELETE(
     }
 
     await db.userFood.delete({ where: { id } })
+
+    await recordDataChange(userId, new Date(), { foods: true })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

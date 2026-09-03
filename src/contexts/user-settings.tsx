@@ -1,6 +1,7 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
+import { useDayEvent } from "@/contexts/day-events"
 import { DAILY_TARGETS } from "@/lib/constants"
 
 export type Targets = {
@@ -119,7 +120,7 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
     setSupplementsDismissedState(newState)
   }, [supplementsDismissedState])
 
-  const fetchUserFoods = useCallback(async () => {
+  const loadUserFoods = useCallback(async () => {
     try {
       const res = await fetch("/api/user-foods")
       if (!res.ok) throw new Error("Failed to load food database")
@@ -128,6 +129,34 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
     } catch (e: any) {
       console.error("Failed to fetch food database:", e)
     }
+  }, [])
+
+  // Coalesce bursts of refresh requests into a single request. One chat turn can
+  // create several foods, and two ChatInterface instances are mounted at once, so
+  // this is called many times in quick succession for what is one refresh.
+  const fetchUserFoodsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchUserFoodsWaitersRef = useRef<Array<() => void>>([])
+
+  const fetchUserFoods = useCallback(() => {
+    return new Promise<void>(resolve => {
+      fetchUserFoodsWaitersRef.current.push(resolve)
+      if (fetchUserFoodsTimerRef.current) clearTimeout(fetchUserFoodsTimerRef.current)
+      fetchUserFoodsTimerRef.current = setTimeout(async () => {
+        fetchUserFoodsTimerRef.current = null
+        const waiters = fetchUserFoodsWaitersRef.current
+        fetchUserFoodsWaitersRef.current = []
+        try {
+          await loadUserFoods()
+        } finally {
+          waiters.forEach(w => w())
+        }
+      }, 150)
+    })
+  }, [loadUserFoods])
+
+  // Drop any pending refresh when the provider unmounts
+  useEffect(() => () => {
+    if (fetchUserFoodsTimerRef.current) clearTimeout(fetchUserFoodsTimerRef.current)
   }, [])
 
   const createUserFood = useCallback(async (food: Omit<UserFood, 'id'>) => {
@@ -175,6 +204,11 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
     refetch()
     fetchUserFoods()
   }, [refetch, fetchUserFoods])
+
+  // Someone changed the food database - on this device or another one.
+  useDayEvent('data_changed', evt => {
+    if (evt.changed?.foods) fetchUserFoods()
+  })
 
   const value: Ctx = {
     targets,

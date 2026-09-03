@@ -8,46 +8,19 @@ import { FoodEntryEditModal } from "@/components/food-entry-edit-modal"
 import { NutritionDashboard } from "@/components/nutrition-dashboard"
 import { SupplementsBanner } from "@/components/supplements-banner"
 import { useDailyLog } from "@/hooks/use-daily-log"
+import { useDayEvents } from "@/contexts/day-events"
 import { useUserSettings } from "@/contexts/user-settings"
 import { useState, useRef, useEffect } from "react"
 
 type MobileTab = "log" | "items"
 
-// Helper to get today's date string in YYYY-MM-DD format
-function getTodayDateString(): string {
-  return new Date().toISOString().split('T')[0]
-}
-
 export default function Home() {
-  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString)
-  
-  // Track what "today" was when the app was last active
-  // This helps us detect when a day has actually passed (not just tab switching)
-  const lastKnownTodayRef = useRef<string>(getTodayDateString())
-  
-  // Auto-switch to today's date when a new day has started
-  // This handles the case where the user left the app open yesterday
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const currentToday = getTodayDateString()
-        const previousToday = lastKnownTodayRef.current
-        
-        // Only auto-switch if a day has actually passed
-        // This ensures users can manually select yesterday within the same day
-        if (currentToday !== previousToday) {
-          lastKnownTodayRef.current = currentToday
-          setSelectedDate(currentToday)
-        }
-      }
-    }
+  // The selected day and the roll-over to a new day live in DayEventsProvider,
+  // which also owns the event stream keyed to that day.
+  const { date: selectedDate, setDate: setSelectedDate } = useDayEvents()
 
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [])
-  
-  const { data, loading, error, deleteFoodEntry, updateFoodEntry, addFoodEntry, applyDataUpdate } = useDailyLog(selectedDate)
-  const { userFoods, fetchUserFoods } = useUserSettings()
+  const { data, loading, error, deleteFoodEntry, updateFoodEntry, addFoodEntry } = useDailyLog(selectedDate)
+  const { userFoods } = useUserSettings()
   const [editingEntry, setEditingEntry] = useState<any>(null)
   const [mobileTab, setMobileTab] = useState<MobileTab>("log")
   const touchStartX = useRef<number | null>(null)
@@ -231,11 +204,9 @@ export default function Home() {
             </div>
             <div className="flex-1 min-h-0">
               <ChatInterface
-                onDataUpdate={(u) => applyDataUpdate(u)}
                 date={selectedDate}
                 userFoods={userFoods}
                 onQuickAdd={handleAddEntry}
-                onUserFoodCreated={fetchUserFoods}
               />
             </div>
           </div>
@@ -280,11 +251,9 @@ export default function Home() {
             {/* Bottom section: Chat takes all remaining vertical space */}
             <div className="min-h-0 h-full">
               <ChatInterface
-                onDataUpdate={(u) => applyDataUpdate(u)}
                 date={selectedDate}
                 userFoods={userFoods}
                 onQuickAdd={handleAddEntry}
-                onUserFoodCreated={fetchUserFoods}
               />
             </div>
           </div>

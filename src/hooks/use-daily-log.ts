@@ -1,14 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
-
-// BroadcastChannel for cross-tab synchronization
-const SYNC_CHANNEL_NAME = 'calorie-tracker-sync'
-
-type SyncMessage = {
-  type: 'foodAdded' | 'foodUpdated' | 'foodDeleted'
-  date: string
-  data: any
-}
+import { useDayEvent } from "@/contexts/day-events"
+import {
+  calculateTotals,
+  emptyTotals,
+  type NutritionTotals,
+} from "@/lib/nutrition"
 
 // UserFood represents a food in user's database
 interface UserFood {
@@ -35,20 +32,15 @@ interface FoodEntry {
   userFood: UserFood
 }
 
-interface NutritionTotals {
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number
-  salt: number
-  vegetables: number
-}
-
 interface DailyLogData {
   date: string
   foodEntries: FoodEntry[]
   totals: NutritionTotals
+}
+
+// Sort entries by timestamp so ordering matches what the server returns
+function sortByTimestamp(entries: FoodEntry[]): FoodEntry[] {
+  return [...entries].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
 }
 
 export function useDailyLog(date: string) {
@@ -56,97 +48,9 @@ export function useDailyLog(date: string) {
   const [data, setData] = useState<DailyLogData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  // BroadcastChannel for cross-tab sync
-  const channelRef = useRef<BroadcastChannel | null>(null)
 
-  // Helper function to calculate nutrition from entry
-  function calculateEntryNutrition(entry: FoodEntry) {
-    const ratio = entry.grams / 100
-    return {
-      calories: entry.userFood.caloriesPer100g * ratio,
-      protein: entry.userFood.proteinPer100g * ratio,
-      carbs: entry.userFood.carbsPer100g * ratio,
-      fat: entry.userFood.fatPer100g * ratio,
-      fiber: entry.userFood.fiberPer100g * ratio,
-      salt: entry.userFood.saltPer100g * ratio,
-      vegetables: entry.userFood.vegetablesPer100g * ratio
-    }
-  }
-
-  // Sort entries by timestamp to ensure consistent ordering across devices
-  function sortByTimestamp(entries: FoodEntry[]): FoodEntry[] {
-    return [...entries].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-  }
-
-  // Calculate totals from food entries
-  function calculateTotals(entries: FoodEntry[]): NutritionTotals {
-    return entries.reduce((totals, entry) => {
-      const nutrition = calculateEntryNutrition(entry)
-      return {
-        calories: totals.calories + nutrition.calories,
-        protein: totals.protein + nutrition.protein,
-        carbs: totals.carbs + nutrition.carbs,
-        fat: totals.fat + nutrition.fat,
-        fiber: totals.fiber + nutrition.fiber,
-        salt: totals.salt + nutrition.salt,
-        vegetables: totals.vegetables + nutrition.vegetables,
-      }
-    }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0, vegetables: 0 })
-  }
-
-  // Apply server-sent data change hints without refetching
-  // Defined early so it can be used in BroadcastChannel handler
-  const applyDataUpdate = useCallback((update: { foodAdded?: any; foodUpdated?: any; foodDeleted?: string }) => {
-    setData(prev => {
-      if (!prev) return prev
-
-      let updatedEntries = prev.foodEntries
-
-      if (update.foodAdded) {
-        const entry = update.foodAdded
-        // Skip if entry already exists (dedup SSE replays / multi-tab / broadcast)
-        if (updatedEntries.some(e => e.id === entry.id)) {
-          return prev
-        }
-        const newEntry = {
-          ...entry,
-          timestamp: new Date(entry.timestamp)
-        }
-        updatedEntries = [...updatedEntries, newEntry]
-      } else if (update.foodUpdated) {
-        const entry = update.foodUpdated
-        // Skip if entry doesn't exist (already deleted)
-        if (!updatedEntries.some(e => e.id === entry.id)) {
-          return prev
-        }
-        const updated = {
-          ...entry,
-          timestamp: new Date(entry.timestamp)
-        }
-        updatedEntries = updatedEntries.map(e => e.id === updated.id ? updated : e)
-      } else if (update.foodDeleted) {
-        const id = update.foodDeleted
-        // Skip if entry doesn't exist (already deleted)
-        if (!updatedEntries.some(e => e.id === id)) {
-          return prev
-        }
-        updatedEntries = updatedEntries.filter(e => e.id !== id)
-      } else {
-        return prev
-      }
-
-      // Sort to ensure consistent ordering across all devices
-      const sortedEntries = sortByTimestamp(updatedEntries)
-      const newTotals = calculateTotals(sortedEntries)
-
-      return {
-        ...prev,
-        foodEntries: sortedEntries,
-        totals: newTotals
-      }
-    })
-  }, [])
+  // Refetches can overlap, so ignore any response that a newer one superseded.
+  const fetchSeqRef = useRef(0)
 
   const fetchData = useCallback(async () => {
     // In development, always proceed. In production, wait until authenticated
@@ -155,136 +59,69 @@ export function useDailyLog(date: string) {
       return
     }
 
+    const seq = ++fetchSeqRef.current
     try {
       setLoading(true)
-      const params = `?date=${date}`
-      const response = await fetch(`/api/daily-logs${params}`)
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch daily log")
-      }
+      const response = await fetch(`/api/daily-logs?date=${encodeURIComponent(date)}`)
+      if (!response.ok) throw new Error("Failed to fetch daily log")
 
       const result = await response.json()
+      if (seq !== fetchSeqRef.current) return
 
-      // Convert timestamp strings to Date objects
-      result.foodEntries = result.foodEntries.map((entry: any) => ({
-        ...entry,
-        timestamp: new Date(entry.timestamp),
-      }))
-
-      // Ensure totals are valid numbers (not NaN or undefined)
-      if (result.totals) {
-        result.totals = {
-          calories: Number.isFinite(result.totals.calories) ? result.totals.calories : 0,
-          protein: Number.isFinite(result.totals.protein) ? result.totals.protein : 0,
-          carbs: Number.isFinite(result.totals.carbs) ? result.totals.carbs : 0,
-          fat: Number.isFinite(result.totals.fat) ? result.totals.fat : 0,
-          fiber: Number.isFinite(result.totals.fiber) ? result.totals.fiber : 0,
-          salt: Number.isFinite(result.totals.salt) ? result.totals.salt : 0,
-          vegetables: Number.isFinite(result.totals.vegetables) ? result.totals.vegetables : 0,
-        }
-      }
-
-      setData(result)
+      setData({
+        date: result.date,
+        foodEntries: result.foodEntries.map((entry: any) => ({
+          ...entry,
+          timestamp: new Date(entry.timestamp),
+        })),
+        // The server computes these with the same code we do; guard only against
+        // a malformed response.
+        totals: { ...emptyTotals(), ...(result.totals ?? {}) },
+      })
       setError(null)
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {
-      setLoading(false)
+      if (seq === fetchSeqRef.current) setLoading(false)
     }
   }, [status, date])
 
-  // Set up BroadcastChannel for cross-tab synchronization
   useEffect(() => {
-    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return
+    setData(null)
+    fetchData()
+  }, [fetchData])
 
-    const channel = new BroadcastChannel(SYNC_CHANNEL_NAME)
-    channelRef.current = channel
+  // Any change to this day invalidates the log; refetch the authoritative copy
+  // rather than merging a payload into local state.
+  useDayEvent('data_changed', evt => {
+    if (evt.changed?.day && (evt.targetDate ?? date) === date) fetchData()
+  })
 
-    channel.onmessage = (event: MessageEvent<SyncMessage>) => {
-      const msg = event.data
-      // Only apply updates for the current date
-      if (msg.date !== date) return
-
-      if (msg.type === 'foodAdded') {
-        applyDataUpdate({ foodAdded: msg.data })
-      } else if (msg.type === 'foodUpdated') {
-        applyDataUpdate({ foodUpdated: msg.data })
-      } else if (msg.type === 'foodDeleted') {
-        applyDataUpdate({ foodDeleted: msg.data })
-      }
-    }
-
-    return () => {
-      channel.close()
-      channelRef.current = null
-    }
-  }, [date, applyDataUpdate])
-
-  // Broadcast a sync message to other tabs
-  const broadcastSync = (msg: SyncMessage) => {
-    try {
-      channelRef.current?.postMessage(msg)
-    } catch {
-      // Ignore errors if channel is closed
-    }
-  }
-
-  useEffect(() => {
-    // Clear data when date changes to avoid working with stale data
-    if (data) {
-      setData(null);
-    }
-    fetchData();
-  }, [fetchData, date])
+  // Show a change immediately, then let the refetch reconcile. Because the server
+  // is the source of truth this only has to be close, not exactly right.
+  const applyLocal = useCallback((mutate: (entries: FoodEntry[]) => FoodEntry[]) => {
+    setData(prev => {
+      if (!prev) return prev
+      const entries = sortByTimestamp(mutate(prev.foodEntries))
+      return { ...prev, foodEntries: entries, totals: calculateTotals(entries) }
+    })
+  }, [])
 
   const addFoodEntry = async (entry: { userFoodId: string; grams: number; chatSessionId?: string }) => {
-    try {
-      const response = await fetch("/api/food-entries", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ...entry, date }),
-      })
+    const response = await fetch("/api/food-entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...entry, date }),
+    })
+    if (!response.ok) throw new Error("Failed to add food entry")
 
-      if (!response.ok) {
-        throw new Error("Failed to add food entry")
-      }
-
-      const newEntry = await response.json()
-
-      // Optimistic update - add the new entry to existing data
-      setData(prev => {
-        if (!prev) return null
-
-        // Defensive dedup: skip if entry already exists (e.g., SSE event arrived first)
-        if (prev.foodEntries.some(e => e.id === newEntry.id)) {
-          return prev
-        }
-
-        const newFoodEntry = {
-          ...newEntry,
-          timestamp: new Date(newEntry.timestamp)
-        }
-
-        const updatedEntries = sortByTimestamp([...prev.foodEntries, newFoodEntry])
-        const newTotals = calculateTotals(updatedEntries)
-
-        return {
-          ...prev,
-          foodEntries: updatedEntries,
-          totals: newTotals
-        }
-      })
-
-      // Broadcast to other tabs
-      broadcastSync({ type: 'foodAdded', date, data: newEntry })
-
-      return newEntry
-    } catch (err) {
-      throw err
-    }
+    const newEntry = await response.json()
+    applyLocal(entries => entries.some(e => e.id === newEntry.id)
+      ? entries
+      : [...entries, { ...newEntry, timestamp: new Date(newEntry.timestamp) }])
+    await fetchData()
+    return newEntry
   }
 
   const updateFoodEntry = async (id: string, updates: {
@@ -296,78 +133,32 @@ export function useDailyLog(date: string) {
     fiberPer100g?: number
     saltPer100g?: number
   }) => {
-    try {
-      const response = await fetch(`/api/food-entries/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updates),
-      })
+    const response = await fetch(`/api/food-entries/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    })
+    if (!response.ok) throw new Error("Failed to update food entry")
 
-      if (!response.ok) {
-        throw new Error("Failed to update food entry")
-      }
-
-      const updatedEntry = await response.json()
-
-      // Optimistic update - update the entry in existing data
-      setData(prev => {
-        if (!prev) return null
-
-        const updatedEntries = sortByTimestamp(prev.foodEntries.map(existingEntry =>
-          existingEntry.id === id
-            ? { ...updatedEntry, timestamp: new Date(updatedEntry.timestamp) }
-            : existingEntry
-        ))
-
-        const newTotals = calculateTotals(updatedEntries)
-
-        return {
-          ...prev,
-          foodEntries: updatedEntries,
-          totals: newTotals
-        }
-      })
-
-      // Broadcast to other tabs
-      broadcastSync({ type: 'foodUpdated', date, data: updatedEntry })
-    } catch (err) {
-      throw err
-    }
+    const updated = await response.json()
+    applyLocal(entries => entries.map(e =>
+      e.id === id ? { ...updated, timestamp: new Date(updated.timestamp) } : e))
+    await fetchData()
   }
 
   const deleteFoodEntry = async (id: string) => {
-    try {
-      const response = await fetch(`/api/food-entries/${id}`, {
-        method: "DELETE",
-      })
+    const response = await fetch(`/api/food-entries/${id}`, { method: "DELETE" })
 
-      if (!response.ok) {
-        throw new Error("Failed to delete food entry")
-      }
-
-      // Optimistic update - remove the entry from existing data
-      setData(prev => {
-        if (!prev) return null
-
-        const updatedEntries = prev.foodEntries.filter(entry => entry.id !== id)
-        const newTotals = calculateTotals(updatedEntries)
-
-        return {
-          ...prev,
-          foodEntries: updatedEntries,
-          totals: newTotals
-        }
-      })
-
-      // Broadcast to other tabs
-      broadcastSync({ type: 'foodDeleted', date, data: id })
-    } catch (err) {
-      throw err
+    // 404 means the entry is already gone, which is the state we are after.
+    // Treating it as a failure used to leave the row on screen with no way to
+    // dismiss it, so every retry 404'd again.
+    if (!response.ok && response.status !== 404) {
+      throw new Error("Failed to delete food entry")
     }
-  }
 
+    applyLocal(entries => entries.filter(e => e.id !== id))
+    await fetchData()
+  }
 
   return {
     data,
@@ -376,7 +167,6 @@ export function useDailyLog(date: string) {
     addFoodEntry,
     updateFoodEntry,
     deleteFoodEntry,
-    applyDataUpdate,
     refetch: fetchData,
   }
 }

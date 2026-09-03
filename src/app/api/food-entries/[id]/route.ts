@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { recordDataChange } from "@/lib/events"
 
 export async function PUT(
   request: NextRequest,
@@ -42,7 +43,10 @@ export async function PUT(
     if (fiberPer100g !== undefined) nutritionUpdates.fiberPer100g = Number(fiberPer100g)
     if (saltPer100g !== undefined) nutritionUpdates.saltPer100g = Number(saltPer100g)
 
-    if (Object.keys(nutritionUpdates).length > 0) {
+    // Editing an entry can rewrite the shared food's nutrition, which affects
+    // every other entry referencing it, so the food database is dirty too.
+    const nutritionChanged = Object.keys(nutritionUpdates).length > 0
+    if (nutritionChanged) {
       await db.userFood.update({
         where: { id: existingEntry.userFoodId },
         data: nutritionUpdates
@@ -59,6 +63,9 @@ export async function PUT(
         userFood: true
       }
     })
+
+    // Record the edit so other devices streaming this day pick it up
+    await recordDataChange(userId, updatedEntry.date, { day: true, foods: nutritionChanged })
 
     return NextResponse.json(updatedEntry)
   } catch (error) {
@@ -101,6 +108,10 @@ export async function DELETE(
     await db.foodEntry.delete({
       where: { id }
     })
+
+    // Record the delete. Without this a replayed foodAdded re-inserted the entry
+    // on every client, and other devices never learned it was gone at all.
+    await recordDataChange(userId, existingEntry.date, { day: true })
 
     return NextResponse.json({ success: true })
   } catch (error) {

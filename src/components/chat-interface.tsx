@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useMemo } from "react"
+import { useDayEvents } from "@/contexts/day-events"
 import Fuse from "fuse.js"
 import { MarkdownRenderer } from "./markdown-renderer"
 
@@ -10,15 +11,6 @@ interface ChatMessage {
   content: string | null
   toolCalls?: string | null
   toolCallId?: string | null
-}
-
-type DataUpdate = {
-  foodEntries?: any[]
-  totals?: any
-  foodAdded?: any
-  foodUpdated?: any
-  foodDeleted?: string
-  refetch?: boolean
 }
 
 export interface UserFood {
@@ -35,20 +27,17 @@ export interface UserFood {
 }
 
 interface ChatInterfaceProps {
-  onDataUpdate?: (update: DataUpdate) => void
   date: string
   userFoods?: UserFood[]
   onQuickAdd?: (entry: { userFoodId: string; grams: number; chatSessionId?: string }) => Promise<void>
-  onUserFoodCreated?: () => void
 }
 
-export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, onUserFoodCreated }: ChatInterfaceProps) {
+export function ChatInterface({ date, userFoods = [], onQuickAdd }: ChatInterfaceProps) {
+  const { chatSessionId, initialMessages, subscribe } = useDayEvents()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
-  const [chatSessionId, setChatSessionId] = useState<string | null>(null)
   const [processingSteps, setProcessingSteps] = useState<string[]>([])
-  const [hasLoadedInitialMessages, setHasLoadedInitialMessages] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
@@ -60,7 +49,6 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
   const [showImageOptions, setShowImageOptions] = useState(false)
 
   // Track processed event IDs to prevent duplicate event application
-  const processedEventIdsRef = useRef<Set<string>>(new Set())
 
   // Quick-add state
   const [selectedFood, setSelectedFood] = useState<UserFood | null>(null)
@@ -181,292 +169,111 @@ export function ChatInterface({ onDataUpdate, date, userFoods = [], onQuickAdd, 
   }, [])
 
 
+  // Seed the transcript from the session the provider resolved for this day
   useEffect(() => {
-    // Reset when date changes
-    setHasLoadedInitialMessages(false)
-    setMessages([])
-    // Clear processed event IDs for the new session
-    processedEventIdsRef.current.clear()
-    loadChatSession()
-  }, [date])
+    setMessages(initialMessages.map((m: any) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      toolCalls: m.toolCalls,
+      toolCallId: m.toolCallId,
+    })))
+    setProcessingSteps([])
+  }, [initialMessages])
 
-  // Maintain a live SSE connection that streams new events from DB
+  // Chat events from the shared stream. Data changes are no longer handled here:
+  // whoever owns the data (the daily log, the food database) subscribes for
+  // itself and refetches, so this only has to draw the conversation.
   useEffect(() => {
-    let cancelled = false
-    let controller: AbortController | null = null
-    // Track the timestamp of the last received event to ensure reliable replay
-    // Initialize to session start time (beginning of day) to catch all events on first connect
-    const sessionStartTime = new Date()
-    sessionStartTime.setHours(0, 0, 0, 0)
-    const lastTsRef = { current: sessionStartTime.toISOString() }
-    const attemptRef = { current: 0 }
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
-
-    const connect = async () => {
-      if (!chatSessionId || cancelled) return
-      // Clear any pending reconnect
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
-        reconnectTimeout = null
+    return subscribe(evt => {
+      if (evt.type === "status" && evt.message) {
+        setProcessingSteps(prev => [...prev, evt.message])
       }
-      controller = new AbortController()
-      const since = lastTsRef.current
-      try {
-        const res = await fetch(
-          `/api/chat/events/stream?chatSessionId=${encodeURIComponent(chatSessionId)}&since=${encodeURIComponent(since)}`,
-          { signal: controller.signal }
-        )
-        if (!res.ok || !res.body) throw new Error('Bad SSE response')
-        attemptRef.current = 0 // reset backoff on successful connect
-        await parseStream(res, (ts) => { lastTsRef.current = ts })
-        // If stream finishes without error (e.g., network change), reconnect
-        if (!cancelled) {
-          const delay = Math.min(1000 * Math.pow(2, attemptRef.current++), 15000)
-          reconnectTimeout = setTimeout(connect, delay)
-        }
-      } catch (_) {
-        if (cancelled) return
-        const delay = Math.min(1000 * Math.pow(2, attemptRef.current++), 15000)
-        reconnectTimeout = setTimeout(connect, delay)
-      }
-    }
-
-    // Handle visibility changes - reconnect immediately when tab becomes visible
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && chatSessionId && !cancelled) {
-        // Abort current connection and reconnect immediately to fetch missed events
-        try { controller?.abort() } catch {}
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout)
-          reconnectTimeout = null
-        }
-        attemptRef.current = 0 // reset backoff for immediate reconnect
-        connect()
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    connect()
-
-    return () => {
-      cancelled = true
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (reconnectTimeout) clearTimeout(reconnectTimeout)
-      try { controller?.abort() } catch {}
-    }
-  }, [chatSessionId])
-
-  const loadChatSession = async () => {
-    try {
-      const params = date ? `?date=${date}` : ""
-      const res = await fetch(`/api/chat-sessions${params}`)
-      if (res.ok) {
-        const sessions = await res.json()
-        if (sessions.length > 0) {
-          const session = sessions[0]
-          setChatSessionId(session.id)
-          // Load messages from the same response
-          if (session.messages) {
-            const serverMessages: ChatMessage[] = session.messages.map((m: any) => ({
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              toolCalls: m.toolCalls,
-              toolCallId: m.toolCallId,
-            }))
-            setMessages(serverMessages)
+      if (evt.type === "message" && evt.message) {
+        const incoming = evt.message as ChatMessage
+        setMessages(prev => {
+          // Dedup by message ID - skip if we already have this message
+          if (incoming.id && prev.some(m => m.id === incoming.id)) {
+            return prev
           }
-          setHasLoadedInitialMessages(true)
-          return
-        }
-      }
-      await createNewChatSession()
-    } catch (e) {
-      console.error("Failed to load chat session", e)
-      await createNewChatSession()
-    }
-  }
 
-  const createNewChatSession = async () => {
-    try {
-      const res = await fetch(`/api/chat-sessions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date }),
-      })
-      if (res.ok) {
-        const session = await res.json()
-        setChatSessionId(session.id)
-        if (session.messages) {
-          setMessages(
-            session.messages.map((m: any) => ({
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              toolCalls: m.toolCalls,
-              toolCallId: m.toolCallId,
-            }))
-          )
-          setHasLoadedInitialMessages(true)
-        }
-      }
-    } catch (e) {
-      console.error("Failed to create chat session", e)
-    }
-  }
+          // Match saved user message to placeholder by content
+          if (incoming.role === 'user') {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              const pm = prev[i]
+              if (pm.role === 'user' && pm.content === incoming.content && !pm.id) {
+                const copy = prev.slice()
+                copy[i] = incoming
+                return copy
+              }
+            }
+          }
 
-  const parseStream = async (response: Response, onTs?: (ts: string) => void) => {
-    const reader = response.body?.getReader()
-    if (!reader) return
-    const decoder = new TextDecoder()
-    let buffer = ""
-    try {
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const chunks = buffer.split("\n\n")
-        buffer = chunks.pop() || ""
-        for (const chunk of chunks) {
-          const line = chunk.trim()
-          if (!line.startsWith("data:")) continue
-          const payload = line.slice(5).trim()
-          if (!payload) continue
+          // Remove global dedup for tool messages. Only dedup within the current
+          // assistant turn (nearest assistant that announced this toolCallId).
+          if (incoming.role === 'tool' && incoming.toolCallId) {
+            const id = incoming.toolCallId
+
+            // Find nearest assistant message that contains this toolCallId
+            let nearestAssistantIdx = -1
+            for (let i = prev.length - 1; i >= 0; i--) {
+              const pm = prev[i]
+              if (pm.role === 'assistant') {
+                let hasId = false
+                if (pm.toolCalls) {
+                  try {
+                    const arr = JSON.parse(pm.toolCalls)
+                    if (Array.isArray(arr)) {
+                      hasId = arr.some((c: any) => c && (c.id === id || c.tool_call_id === id))
+                    }
+                  } catch {
+                    // best-effort fallback: substring check
+                    hasId = typeof pm.toolCalls === 'string' && pm.toolCalls.includes(id)
+                  }
+                }
+                if (hasId) { nearestAssistantIdx = i; break }
+              }
+            }
+
+            if (nearestAssistantIdx !== -1) {
+              // Within this turn only, replace an existing tool message with same id
+              for (let i = prev.length - 1; i > nearestAssistantIdx; i--) {
+                const pm = prev[i]
+                if (pm.role === 'tool' && pm.toolCallId === id) {
+                  const copy = prev.slice()
+                  copy[i] = incoming
+                  return copy
+                }
+              }
+            }
+          }
+
+          return [...prev, incoming]
+        })
+      }
+      if (evt.type === "completed") {
+        setLoading(false)
+        setProcessingSteps([])
+      }
+      if (evt.type === "error") {
+        setLoading(false)
+        const lines: string[] = []
+        const errText = typeof evt.error === 'string' ? evt.error : 'Unexpected error'
+        lines.push(`Error: ${errText}`)
+        const provider = typeof evt.providerError === 'string' ? evt.providerError : null
+        if (provider) lines.push(`Details: ${provider}`)
+        if (!provider && evt.details) {
           try {
-            const evt = JSON.parse(payload)
-            // Track server-provided event timestamp for reliable resuming
-            if (evt && typeof evt._ts === 'string' && onTs) {
-              onTs(evt._ts)
-            }
-            
-            // Event-level deduplication: skip if we've already processed this event
-            const eventId = evt._eventId as string | undefined
-            if (eventId) {
-              if (processedEventIdsRef.current.has(eventId)) {
-                continue // Skip duplicate event
-              }
-              processedEventIdsRef.current.add(eventId)
-              // Keep the set from growing unbounded (max 1000 entries)
-              if (processedEventIdsRef.current.size > 1000) {
-                const firstKey = processedEventIdsRef.current.values().next().value
-                if (firstKey) processedEventIdsRef.current.delete(firstKey)
-              }
-            }
-            
-            if (evt.type === "status" && evt.message) {
-              setProcessingSteps(prev => [...prev, evt.message])
-            }
-            if (evt.type === "message" && evt.message) {
-              const incoming = evt.message as ChatMessage
-              setMessages(prev => {
-                // Dedup by message ID - skip if we already have this message
-                if (incoming.id && prev.some(m => m.id === incoming.id)) {
-                  return prev
-                }
-
-                // Match saved user message to placeholder by content
-                if (incoming.role === 'user') {
-                  for (let i = prev.length - 1; i >= 0; i--) {
-                    const pm = prev[i]
-                    if (pm.role === 'user' && pm.content === incoming.content && !pm.id) {
-                      const copy = prev.slice()
-                      copy[i] = incoming
-                      return copy
-                    }
-                  }
-                }
-
-                // Remove global dedup for tool messages. Only dedup within the current
-                // assistant turn (nearest assistant that announced this toolCallId).
-                if (incoming.role === 'tool' && incoming.toolCallId) {
-                  const id = incoming.toolCallId
-
-                  // Find nearest assistant message that contains this toolCallId
-                  let nearestAssistantIdx = -1
-                  for (let i = prev.length - 1; i >= 0; i--) {
-                    const pm = prev[i]
-                    if (pm.role === 'assistant') {
-                      let hasId = false
-                      if (pm.toolCalls) {
-                        try {
-                          const arr = JSON.parse(pm.toolCalls)
-                          if (Array.isArray(arr)) {
-                            hasId = arr.some((c: any) => c && (c.id === id || c.tool_call_id === id))
-                          }
-                        } catch {
-                          // best-effort fallback: substring check
-                          hasId = typeof pm.toolCalls === 'string' && pm.toolCalls.includes(id)
-                        }
-                      }
-                      if (hasId) { nearestAssistantIdx = i; break }
-                    }
-                  }
-
-                  if (nearestAssistantIdx !== -1) {
-                    // Within this turn only, replace an existing tool message with same id
-                    for (let i = prev.length - 1; i > nearestAssistantIdx; i--) {
-                      const pm = prev[i]
-                      if (pm.role === 'tool' && pm.toolCallId === id) {
-                        const copy = prev.slice()
-                        copy[i] = incoming
-                        return copy
-                      }
-                    }
-                  }
-                }
-
-                return [...prev, incoming]
-              })
-            }
-            if (evt.type === "data_changed" && evt.data) {
-              // The useDailyLog hook now handles optimistic updates for all operations
-              // so we don't need to trigger refetch anymore
-              // Only apply data updates if they match the current date
-              // This prevents errors when calendar date changes while processing
-              if (onDataUpdate && date === (evt.targetDate || date)) {
-                if (evt.data.foodAdded) {
-                  onDataUpdate({ foodAdded: evt.data.foodAdded })
-                } else if (evt.data.foodUpdated) {
-                  onDataUpdate({ foodUpdated: evt.data.foodUpdated })
-                } else if (evt.data.foodDeleted) {
-                  onDataUpdate({ foodDeleted: evt.data.foodDeleted })
-                }
-              }
-              // Refresh userFoods when a new food is created
-              if (evt.data.userFoodCreated && onUserFoodCreated) {
-                onUserFoodCreated()
-              }
-            }
-            if (evt.type === "completed") {
-              setLoading(false)
-              setProcessingSteps([])
-            }
-            if (evt.type === "error") {
-              setLoading(false)
-              const lines: string[] = []
-              const errText = typeof evt.error === 'string' ? evt.error : 'Unexpected error'
-              lines.push(`Error: ${errText}`)
-              const provider = typeof evt.providerError === 'string' ? evt.providerError : null
-              if (provider) lines.push(`Details: ${provider}`)
-              if (!provider && evt.details) {
-                try {
-                  const raw = typeof evt.details === 'string' ? evt.details : JSON.stringify(evt.details)
-                  const short = raw.length > 500 ? raw.slice(0, 500) + '…' : raw
-                  lines.push(`Details: ${short}`)
-                } catch {}
-              }
-              setProcessingSteps(lines)
-              console.error("Stream error:", evt.error, evt.providerError || '', evt.details || '')
-            }
-          } catch (e) {
-            console.error("Failed to parse event", e)
-          }
+            const raw = typeof evt.details === 'string' ? evt.details : JSON.stringify(evt.details)
+            const short = raw.length > 500 ? raw.slice(0, 500) + '…' : raw
+            lines.push(`Details: ${short}`)
+          } catch {}
         }
+        setProcessingSteps(lines)
+        console.error("Stream error:", evt.error, evt.providerError || '', evt.details || '')
       }
-    } finally {
-      try { reader.releaseLock() } catch {}
-    }
-  }
+    })
+  }, [subscribe])
 
   const sendMessage = async () => {
     const text = input.trim()

@@ -1,5 +1,6 @@
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { recordDataChange } from "@/lib/events"
 import { getServerSession } from "next-auth/next"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -76,6 +77,10 @@ export async function POST(request: NextRequest) {
         comments: comments || null
       }
     })
+
+    // The food database is not per-day, so signal the session for today - that is
+    // the day an active client is realistically streaming.
+    await recordDataChange(userId, new Date(), { foods: true })
 
     return NextResponse.json(userFood, { status: 201 })
   } catch (error: any) {

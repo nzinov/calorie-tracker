@@ -636,7 +636,14 @@ export async function POST(request: NextRequest) {
           const savedTool = await saveMessageToDb(chatSessionId, 'tool', toolResult, null, toolCallId)
           await createChatEvent(chatSessionId, 'message', { type: 'message', message: { id: savedTool?.id, role: 'tool', content: toolResult, toolCalls: null, toolCallId: toolCallId } })
           if (result.foodAdded || result.foodUpdated || result.foodDeleted || result.userFoodCreated) {
-            await createChatEvent(chatSessionId, 'data_changed', { type: 'data_changed', data: result, targetDate: dateStr })
+            await createChatEvent(chatSessionId, 'data_changed', {
+              type: 'data_changed',
+              targetDate: dateStr,
+              changed: {
+                day: Boolean(result.foodAdded || result.foodUpdated || result.foodDeleted),
+                foods: Boolean(result.userFoodCreated)
+              }
+            })
           }
 
           toolMessages.push({ role: 'tool', content: toolResult, tool_call_id: toolCallId })
