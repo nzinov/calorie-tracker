@@ -10,7 +10,10 @@
     "db:push": "./node_modules/.bin/prisma db push --schema prisma/schema.prisma",
     "migrate:deploy": "./node_modules/.bin/prisma migrate deploy --schema prisma/schema.postgres.prisma",
     "lint": "eslint",
-    "postinstall": "echo 'skip prisma generate on postinstall'"
+    "postinstall": "echo 'skip prisma generate on postinstall'",
+    "test": "node src/test/run-tests.js",
+    "test:run": "node src/test/run-tests.js",
+    "test:coverage": "node src/test/run-tests.js"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
@@ -25,7 +28,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.2.4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
